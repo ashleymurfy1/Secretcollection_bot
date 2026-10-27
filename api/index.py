@@ -2,8 +2,11 @@ import os
 import json
 from http.server import BaseHTTPRequestHandler
 import urllib.request
+import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+# Ganti dengan username bot Telegram kamu (tanpa tanda @)
+BOT_USERNAME = "Secretcllctn_bot"
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -13,33 +16,39 @@ class handler(BaseHTTPRequestHandler):
             
             if post_data:
                 update = json.loads(post_data.decode('utf-8'))
+                
+                # Menangani jika user mengklik link start=... dari bot
                 if "message" in update:
                     message = update["message"]
                     chat_id = message["chat"]["id"]
-                    
-                    # Cek jenis pesan yang dikirim user
                     text = message.get("text", "")
                     
-                    if text == "/start":
-                        self.send_telegram_message(
-                            chat_id, 
-                            "Halo! Kirimkan video atau media kamu ke sini, dan bot akan merespons serta menghasilkan link-nya."
-                        )
+                    if text.startswith("/start"):
+                        parts = text.split(" ")
+                        if len(parts) > 1:
+                            payload_code = parts[1]
+                            self.send_telegram_message(
+                                chat_id, 
+                                f"🎬 Ini media yang terikat dengan kode:\n`{payload_code}`\n\n*(Silakan kirim ulang media jika ingin mengambil kodenya lagi)*"
+                            )
+                        else:
+                            self.send_telegram_message(
+                                chat_id, 
+                                "Halo! Kirimkan video atau foto kamu ke sini, dan bot akan membuatkan link khusus Telegram."
+                            )
                     elif "video" in message or "document" in message or "photo" in message:
-                        # Contoh respons saat user mengirim media (video/foto/dokumen)
-                        # Kamu bisa sesuaikan bagian ini dengan logika link shortener milikmu nanti
-                        media_name = "Media Anda"
-                        if "video" in message:
-                            media_name = "Video"
-                        elif "photo" in message:
-                            media_name = "Foto"
-                        elif "document" in message:
-                            media_name = "Dokumen"
-                            
+                        # Buat kode acak unik untuk media ini
+                        random_code = f"media_{random.randint(10000, 99999)}"
+                        
+                        media_name = "Video" if "video" in message else ("Foto" if "photo" in message else "Dokumen")
+                        
+                        # Format link deep linking Telegram (membuka bot kembali)
+                        telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
+                        
                         reply_text = (
-                            f"✅ {media_name} berhasil diterima!\n\n"
-                            f"🔗 Link akses media:\n"
-                            f"https://telebot-coral.vercel.app/s/sample-link"
+                            f"✅ {media_name} berhasil disimpan!\n\n"
+                            f"🔗 Klik link di bawah untuk membuka kembali lewat bot:\n"
+                            f"{telegram_link}"
                         )
                         self.send_telegram_message(chat_id, reply_text)
                     else:
@@ -62,7 +71,7 @@ class handler(BaseHTTPRequestHandler):
         if not TOKEN:
             return
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
