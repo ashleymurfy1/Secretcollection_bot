@@ -12,33 +12,37 @@ class handler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             
+            # Ubah data mentah dari Telegram menjadi dictionary Python
             update = json.loads(post_data.decode('utf-8'))
+            print("DATA DARI TELEGRAM:", update)  # Ini akan masuk ke Logs Vercel
             
+            # Cek apakah ada pesan masuk
             if "message" in update:
-                chat_id = update["message"]["chat"]["id"]
-                text = update["message"].get("text", "")
+                message = update["message"]
+                chat_id = message["chat"]["id"]
+                text = message.get("text", "")
                 
+                # Kirim balasan otomatis
                 if text == "/start":
                     send_message(chat_id, "Halo! Bot sharing media siap digunakan.")
                 else:
                     send_message(chat_id, f"Pesan diterima: {text}")
                     
         except Exception as e:
-            print(f"Error handling request: {e}")
+            print(f"Error utama: {e}")
 
-        # Selalu kirim status 200 OK ke Telegram agar tidak terjadi timeout/retry terus-menerus
+        # Beri respons OK (200) ke Telegram agar tidak dianggap gagal
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
+        self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
         return
 
     def do_GET(self):
-        # Untuk antisipasi jika URL Vercel-nya diakses langsung lewat browser
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Telegram Bot is running!")
+        self.wfile.write(b"Bot is active!")
         return
 
 def send_message(chat_id, text):
@@ -47,4 +51,4 @@ def send_message(chat_id, text):
         payload = {"chat_id": chat_id, "text": text}
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
-        print(f"Error sending message: {e}")
+        print(f"Gagal mengirim pesan: {e}")
