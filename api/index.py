@@ -16,16 +16,37 @@ class handler(BaseHTTPRequestHandler):
                 if "message" in update:
                     message = update["message"]
                     chat_id = message["chat"]["id"]
+                    
+                    # Cek jenis pesan yang dikirim user
                     text = message.get("text", "")
                     
                     if text == "/start":
-                        self.send_telegram_message(chat_id, "Halo! Bot sharing media siap digunakan.")
+                        self.send_telegram_message(
+                            chat_id, 
+                            "Halo! Kirimkan video atau media kamu ke sini, dan bot akan merespons serta menghasilkan link-nya."
+                        )
+                    elif "video" in message or "document" in message or "photo" in message:
+                        # Contoh respons saat user mengirim media (video/foto/dokumen)
+                        # Kamu bisa sesuaikan bagian ini dengan logika link shortener milikmu nanti
+                        media_name = "Media Anda"
+                        if "video" in message:
+                            media_name = "Video"
+                        elif "photo" in message:
+                            media_name = "Foto"
+                        elif "document" in message:
+                            media_name = "Dokumen"
+                            
+                        reply_text = (
+                            f"✅ {media_name} berhasil diterima!\n\n"
+                            f"🔗 Link akses media:\n"
+                            f"https://telebot-coral.vercel.app/s/sample-link"
+                        )
+                        self.send_telegram_message(chat_id, reply_text)
                     else:
                         self.send_telegram_message(chat_id, f"Pesan diterima: {text}")
         except Exception as e:
             print(f"Error: {e}")
 
-        # Wajib merespons Telegram dengan HTTP 200 OK
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
