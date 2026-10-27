@@ -1,10 +1,9 @@
 import os
 import json
-import requests
 from http.server import BaseHTTPRequestHandler
+import urllib.request
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -12,43 +11,40 @@ class handler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             
-            # Ubah data mentah dari Telegram menjadi dictionary Python
-            update = json.loads(post_data.decode('utf-8'))
-            print("DATA DARI TELEGRAM:", update)  # Ini akan masuk ke Logs Vercel
-            
-            # Cek apakah ada pesan masuk
-            if "message" in update:
-                message = update["message"]
-                chat_id = message["chat"]["id"]
-                text = message.get("text", "")
-                
-                # Kirim balasan otomatis
-                if text == "/start":
-                    send_message(chat_id, "Halo! Bot sharing media siap digunakan.")
-                else:
-                    send_message(chat_id, f"Pesan diterima: {text}")
+            if post_data:
+                update = json.loads(post_data.decode('utf-8'))
+                if "message" in update:
+                    message = update["message"]
+                    chat_id = message["chat"]["id"]
+                    text = message.get("text", "")
                     
+                    if text == "/start":
+                        self.send_telegram_message(chat_id, "Halo! Bot sharing media siap digunakan.")
+                    else:
+                        self.send_telegram_message(chat_id, f"Pesan diterima: {text}")
         except Exception as e:
-            print(f"Error utama: {e}")
+            print(f"Error: {e}")
 
-        # Beri respons OK (200) ke Telegram agar tidak dianggap gagal
+        # Wajib merespons Telegram dengan HTTP 200 OK
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
-        return
+        self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
 
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"Bot is active!")
-        return
 
-def send_message(chat_id, text):
-    try:
-        url = f"{TELEGRAM_API_URL}/sendMessage"
+    def send_telegram_message(self, chat_id, text):
+        if not TOKEN:
+            return
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Gagal mengirim pesan: {e}")
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        try:
+            urllib.request.urlopen(req)
+        except Exception as e:
+            print(f"Failed to send message: {e}")
