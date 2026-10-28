@@ -5,6 +5,7 @@ import urllib.request
 import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 BOT_USERNAME = "private_media_db_bot"
 
 class handler(BaseHTTPRequestHandler):
@@ -23,10 +24,18 @@ class handler(BaseHTTPRequestHandler):
                     text = message.get("text", "") or message.get("caption", "")
                     
                     if text.startswith("/start"):
-                        self.send_telegram_message(
-                            chat_id, 
-                            "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
-                        )
+                        # Cek apakah ada parameter file (untuk ambil file dari database)
+                        parts = text.split(" ")
+                        if len(parts) > 1 and parts[1].startswith("file"):
+                            self.send_telegram_message(
+                                chat_id, 
+                                "📁 Fitur mengambil file dari database sedang diproses!"
+                            )
+                        else:
+                            self.send_telegram_message(
+                                chat_id, 
+                                "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
+                            )
                     elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         media_name = "Media"
                         if "video" in message:
@@ -36,6 +45,10 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
+                        # Teruskan file ke Channel Database jika DB_CHANNEL_ID diset
+                        if DB_CHANNEL_ID:
+                            self.forward_to_channel(chat_id, message.get("message_id"))
+
                         random_code = f"file_{random.randint(100000, 999999)}"
                         telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                         
@@ -66,6 +79,15 @@ class handler(BaseHTTPRequestHandler):
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        self.call_telegram_api(url, payload)
+
+    def forward_to_channel(self, from_chat_id, message_id):
+        url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
+        payload = {
+            "chat_id": DB_CHANNEL_ID,
+            "from_chat_id": from_chat_id,
+            "message_id": message_id
+        }
         self.call_telegram_api(url, payload)
 
     def call_telegram_api(self, url, payload):
