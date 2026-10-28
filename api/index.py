@@ -6,7 +6,8 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
-DATABASE_CHAT_ID = -3998673624
+# ID Channel Database yang baru
+DATABASE_CHAT_ID = -4351284345
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -28,14 +29,13 @@ class handler(BaseHTTPRequestHandler):
                             payload_code = parts[1]
                             self.send_telegram_message(
                                 chat_id, 
-                                f"🎬 Sedang memuat file dari kode `{payload_code}`..."
+                                f"📂 Sedang memuat file untuk kode: `{payload_code}`..."
                             )
                         else:
                             self.send_telegram_message(
                                 chat_id, 
                                 "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
                             )
-                    # Deteksi segala jenis media (video, foto, dokumen, audio, animasi)
                     elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
                         media_name = "Media"
                         if "video" in message:
@@ -44,10 +44,8 @@ class handler(BaseHTTPRequestHandler):
                             media_name = "Foto"
                         elif "document" in message:
                             media_name = "Dokumen"
-                        elif "animation" in message:
-                            media_name = "GIF/Animasi"
                         
-                        # Forward ke grup database
+                        # Forward media ke Channel Database
                         forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
                         forward_payload = {
                             "chat_id": DATABASE_CHAT_ID,
@@ -58,7 +56,7 @@ class handler(BaseHTTPRequestHandler):
                         res_ok, res_desc = self.call_telegram_api(forward_url, forward_payload)
                         
                         if res_ok:
-                            random_code = f"media_{random.randint(100000, 999999)}"
+                            random_code = f"file_{random.randint(100000, 999999)}"
                             telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                             
                             reply_text = (
@@ -67,10 +65,7 @@ class handler(BaseHTTPRequestHandler):
                                 f"{telegram_link}"
                             )
                         else:
-                            reply_text = (
-                                f"⚠️ Gagal forward ke database.\n"
-                                f"Error: {res_desc}"
-                            )
+                            reply_text = f"⚠️ Gagal menyimpan ke database.\nError: {res_desc}"
                             
                         self.send_telegram_message(chat_id, reply_text)
                     else:
