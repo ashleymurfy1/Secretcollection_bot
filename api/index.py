@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-BOT_USERNAME = "private_media_db_bot"
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -42,8 +41,8 @@ class handler(BaseHTTPRequestHandler):
 
                         random_code = f"file_{random.randint(100000, 999999)}"
                         
-                        # Menggunakan f-string yang bersih tanpa karakter ganda
-                        telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
+                        # Ditulis secara manual langsung tanpa variabel agar garis bawah tidak hilang
+                        telegram_link = "https://t.me/private_media_db_bot?start=" + random_code
                         
                         reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses Bot:*\n{telegram_link}"
                         self.send_telegram_message(chat_id, reply_text)
