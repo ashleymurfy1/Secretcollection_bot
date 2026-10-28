@@ -2,13 +2,9 @@ import os
 import json
 from http.server import BaseHTTPRequestHandler
 import urllib.request
-import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-
-# Kamus / Database sementara untuk mencatat pasangan kode unik dengan message_id di channel database
-# (Catatan: Karena Vercel bersifat serverless, untuk penyimpanan permanen jangka panjang nanti bisa pakai database seperti Supabase/MongoDB, tapi untuk sekarang kita simpan referensinya atau gunakan metode forward langsung)
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -26,15 +22,15 @@ class handler(BaseHTTPRequestHandler):
                     
                     if text.startswith("/start"):
                         parts = text.split(" ")
-                        if len(parts) > 1 and parts[1].startswith("file"):
-                            # Jika pengguna mengklik link akses file
-                            file_code = parts[1]
-                            self.send_telegram_message(
-                                chat_id, 
-                                f"🔍 Sedang mengambil file dengan kode: {file_code}..."
-                            )
-                            # Di sini bot bisa mengambil file dari channel database jika ID pesannya cocok.
-                            # Karena ini dikirim via bot yang sama, kita beri panduan atau ambil dari database.
+                        if len(parts) > 1 and parts[1].startswith("msg"):
+                            # Mengambil ID pesan database dari link start=msg_XXXXX
+                            try:
+                                db_msg_id = int(parts[1].replace("msg_", ""))
+                                # Teruskan file dari channel database kembali ke pengguna
+                                self.copy_from_channel(chat_id, db_msg_id)
+                            except Exception as err:
+                                print(f"Error parse msg_id: {err}")
+                                self.send_telegram_message(chat_id, "❌ File tidak ditemukan atau link sudah kedaluwarsa.")
                         else:
                             self.send_telegram_message(
                                 chat_id, 
@@ -49,15 +45,18 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
-                        # 1. Teruskan file ke Channel Database dan tangkap response-nya untuk tahu ID pesan di database
-                        sent_msg_id = None
+                        # 1. Teruskan file ke Channel Database dan tangkap message_id nya
+                        db_msg_id = None
                         if DB_CHANNEL_ID:
-                            sent_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
+                            db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
-                        random_code = f"file_{random.randint(100000, 999999)}"
-                        telegram_link = "https://t.me/private_media_db_bot?start=" + random_code
-                        
-                        reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses Bot:*\n{telegram_link}"
+                        if db_msg_id:
+                            # Buat link yang berisi ID pesan database asli
+                            telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
+                            reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses Bot:*\n{telegram_link}"
+                        else:
+                            reply_text = f"⚠️ *{media_name} gagal disimpan ke channel database (Cek DB_CHANNEL_ID).* "
+
                         self.send_telegram_message(chat_id, reply_text)
                             
         except Exception as e:
@@ -86,17 +85,30 @@ class handler(BaseHTTPRequestHandler):
             "from_chat_id": from_chat_id,
             "message_id": message_id
         }
-        return self.call_telegram_api(url, payload)
+        res = self.call_telegram_api(url, payload)
+        if res and res.get("ok"):
+            return res.get("result", {}).get("message_id")
+        return None
+
+    def copy_from_channel(self, chat_id, message_id):
+        # Menggunakan copyMessage agar file terkirim tanpa label "Diteruskan dari..."
+        url = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
+        payload = {
+            "chat_id": chat_id,
+            "from_chat_id": DB_CHANNEL_ID,
+            "message_id": message_id
+        }
+        self.call_telegram_api(url, payload)
 
     def call_telegram_api(self, url, payload):
         if not TOKEN:
-            return False
+            return None
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
             response = urllib.request.urlopen(req)
             result = json.loads(response.read().decode('utf-8'))
-            return result.get("result", {}).get("message_id") if result.get("ok") else None
+            return result
         except Exception as e:
             print(f"Telegram API Error: {e}")
             return None
