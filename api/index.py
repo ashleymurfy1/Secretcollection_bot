@@ -2,7 +2,6 @@ import os
 import json
 from http.server import BaseHTTPRequestHandler
 import urllib.request
-import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
@@ -23,24 +22,18 @@ class handler(BaseHTTPRequestHandler):
                     
                     if text.startswith("/start"):
                         parts = text.split(" ")
-                        if len(parts) > 1 and parts[1].startswith("album_"):
-                            # Fitur untuk mengambil sekumpulan file berdasarkan kode album
-                            batch_code = parts[1]
-                            self.send_telegram_message(
-                                chat_id, 
-                                f"📦 Sedang menyiapkan kumpulan file untuk kode: {batch_code}..."
-                            )
-                            # (File-file di dalam album akan diteruskan otomatis ke sini)
-                        elif len(parts) > 1 and parts[1].startswith("msg_"):
+                        if len(parts) > 1 and parts[1].startswith("msg_"):
+                            # Mengambil file satuan berdasarkan ID pesan database
                             try:
                                 db_msg_id = int(parts[1].replace("msg_", ""))
                                 self.copy_from_channel(chat_id, db_msg_id)
-                            except:
-                                self.send_telegram_message(chat_id, "❌ File tidak ditemukan.")
+                            except Exception as err:
+                                print(f"Error parse msg_id: {err}")
+                                self.send_telegram_message(chat_id, "❌ File tidak ditemukan atau link sudah kedaluwarsa.")
                         else:
                             self.send_telegram_message(
                                 chat_id, 
-                                "Halo! Kirimkan album foto/video atau file satuan ke sini untuk dibuatkan link-nya."
+                                "Halo! Kirimkan foto atau video ke sini untuk disimpan dan dibuatkan link-nya."
                             )
                     elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         media_name = "Media"
@@ -51,22 +44,15 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
-                        # Cek apakah ini bagian dari Album (Media Group)
-                        media_group_id = message.get("media_group_id")
-                        
+                        # Teruskan file ke Channel Database dan tangkap message_id nya
                         db_msg_id = None
                         if DB_CHANNEL_ID:
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
-                            if media_group_id:
-                                # Jika dikirim bersamaan dalam bentuk album
-                                link_code = f"album_{media_group_id[-6:]}" # Ambil 6 karakter unik album
-                                reply_text = f"✅ *Album {media_name} berhasil disimpan!*\n\n🔗 *Link Akses Satu Album:*\nhttps://t.me/private_media_db_bot?start={link_code}"
-                            else:
-                                # Jika dikirim satuan (single file)
-                                telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
-                                reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
+                            # Setiap file dibuatkan link khususnya sendiri agar dijamin 100% muncul saat diklik
+                            telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
+                            reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
                         else:
                             reply_text = f"⚠️ Gagal menyimpan ke channel database."
 
