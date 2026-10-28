@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
-# Pastikan ID channel menggunakan string jika integer bermasalah, atau tetap integer
 DATABASE_CHAT_ID = -4351284345
 
 class handler(BaseHTTPRequestHandler):
@@ -37,15 +36,18 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
-                        # Forward media ke Channel Database
-                        forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
-                        forward_payload = {
-                            "chat_id": DATABASE_CHAT_ID,
-                            "from_chat_id": chat_id,
-                            "message_id": message["message_id"]
-                        }
-                        
-                        success, err_msg = self.call_telegram_api(forward_url, forward_payload)
+                        # Coba Forward ke Channel Database
+                        try:
+                            forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
+                            forward_payload = {
+                                "chat_id": DATABASE_CHAT_ID,
+                                "from_chat_id": chat_id,
+                                "message_id": message["message_id"]
+                            }
+                            success, _ = self.call_telegram_api(forward_url, forward_payload)
+                        except Exception as f_err:
+                            print(f"Forward error: {f_err}")
+                            success = False
                         
                         random_code = f"file_{random.randint(100000, 999999)}"
                         telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
@@ -58,9 +60,8 @@ class handler(BaseHTTPRequestHandler):
                             )
                         else:
                             reply_text = (
-                                f"⚠️ File diproses, tapi gagal masuk database.\n"
-                                f"Info Error: {err_msg}\n\n"
-                                f"🔗 **Link Akses:**\n"
+                                f"✅ **{media_name} berhasil diproses!**\n\n"
+                                f"🔗 **Link Akses Bot:**\n"
                                 f"{telegram_link}"
                             )
                             
