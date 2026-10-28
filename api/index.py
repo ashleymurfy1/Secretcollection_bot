@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
-# Masukkan ID sebagai string atau integer dengan benar
 DATABASE_CHAT_ID = -3998673624
 
 class handler(BaseHTTPRequestHandler):
@@ -24,14 +23,31 @@ class handler(BaseHTTPRequestHandler):
                     text = message.get("text", "")
                     
                     if text.startswith("/start"):
-                        self.send_telegram_message(
-                            chat_id, 
-                            "Halo! Kirimkan video atau foto ke sini untuk disimpan."
-                        )
-                    elif "video" in message or "document" in message or "photo" in message:
-                        media_type = "Video" if "video" in message else ("Dokumen" if "document" in message else "Foto")
+                        parts = text.split(" ")
+                        if len(parts) > 1:
+                            payload_code = parts[1]
+                            self.send_telegram_message(
+                                chat_id, 
+                                f"🎬 Sedang memuat file dari kode `{payload_code}`..."
+                            )
+                        else:
+                            self.send_telegram_message(
+                                chat_id, 
+                                "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
+                            )
+                    # Deteksi segala jenis media (video, foto, dokumen, audio, animasi)
+                    elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
+                        media_name = "Media"
+                        if "video" in message:
+                            media_name = "Video"
+                        elif "photo" in message:
+                            media_name = "Foto"
+                        elif "document" in message:
+                            media_name = "Dokumen"
+                        elif "animation" in message:
+                            media_name = "GIF/Animasi"
                         
-                        # Forward media ke grup database
+                        # Forward ke grup database
                         forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
                         forward_payload = {
                             "chat_id": DATABASE_CHAT_ID,
@@ -42,18 +58,18 @@ class handler(BaseHTTPRequestHandler):
                         res_ok, res_desc = self.call_telegram_api(forward_url, forward_payload)
                         
                         if res_ok:
-                            random_code = f"file_{random.randint(100000, 999999)}"
+                            random_code = f"media_{random.randint(100000, 999999)}"
                             telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                             
                             reply_text = (
-                                f"✅ **{media_type} berhasil disimpan ke database!**\n\n"
+                                f"✅ **{media_name} berhasil disimpan ke database!**\n\n"
                                 f"🔗 **Link Akses Bot:**\n"
                                 f"{telegram_link}"
                             )
                         else:
                             reply_text = (
-                                f"⚠️ Gagal simpan ke database.\n"
-                                f"Alasan dari Telegram: {res_desc}"
+                                f"⚠️ Gagal forward ke database.\n"
+                                f"Error: {res_desc}"
                             )
                             
                         self.send_telegram_message(chat_id, reply_text)
@@ -82,7 +98,7 @@ class handler(BaseHTTPRequestHandler):
 
     def call_telegram_api(self, url, payload):
         if not TOKEN:
-            return False, "Token tidak ditemukan"
+            return False, "Token kosong"
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
@@ -95,4 +111,4 @@ class handler(BaseHTTPRequestHandler):
             return False, error_body
         except Exception as e:
             print(f"Telegram API Error: {e}")
-            return str(e), False
+            return False, str(e)
