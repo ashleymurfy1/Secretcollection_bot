@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcollection_bot"
-
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
