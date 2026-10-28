@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
-DATABASE_CHAT_ID = -4351284345
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -17,17 +16,19 @@ class handler(BaseHTTPRequestHandler):
             if post_data:
                 update = json.loads(post_data.decode('utf-8'))
                 
-                if "message" in update:
-                    message = update["message"]
+                # Cek apakah ada 'message' atau 'edited_message'
+                message = update.get("message") or update.get("edited_message")
+                
+                if message and "chat" in message:
                     chat_id = message["chat"]["id"]
-                    text = message.get("text", "")
+                    text = message.get("text", "") or message.get("caption", "")
                     
                     if text.startswith("/start"):
                         self.send_telegram_message(
                             chat_id, 
                             "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
                         )
-                    elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
+                    elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         media_name = "Media"
                         if "video" in message:
                             media_name = "Video"
@@ -36,38 +37,17 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
-                        # Coba Forward ke Channel Database
-                        try:
-                            forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
-                            forward_payload = {
-                                "chat_id": DATABASE_CHAT_ID,
-                                "from_chat_id": chat_id,
-                                "message_id": message["message_id"]
-                            }
-                            success, _ = self.call_telegram_api(forward_url, forward_payload)
-                        except Exception as f_err:
-                            print(f"Forward error: {f_err}")
-                            success = False
-                        
                         random_code = f"file_{random.randint(100000, 999999)}"
                         telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                         
-                        if success:
-                            reply_text = (
-                                f"✅ **{media_name} berhasil disimpan ke database!**\n\n"
-                                f"🔗 **Link Akses Bot:**\n"
-                                f"{telegram_link}"
-                            )
-                        else:
-                            reply_text = (
-                                f"✅ **{media_name} berhasil diproses!**\n\n"
-                                f"🔗 **Link Akses Bot:**\n"
-                                f"{telegram_link}"
-                            )
-                            
+                        reply_text = (
+                            f"✅ **{media_name} berhasil disimpan!**\n\n"
+                            f"🔗 **Link Akses Bot:**\n"
+                            f"{telegram_link}"
+                        )
                         self.send_telegram_message(chat_id, reply_text)
                     else:
-                        if chat_id != DATABASE_CHAT_ID and text:
+                        if text:
                             self.send_telegram_message(chat_id, f"Pesan diterima: {text}")
                             
         except Exception as e:
@@ -91,17 +71,13 @@ class handler(BaseHTTPRequestHandler):
 
     def call_telegram_api(self, url, payload):
         if not TOKEN:
-            return False, "Token kosong"
+            return False
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
             response = urllib.request.urlopen(req)
             result = json.loads(response.read().decode('utf-8'))
-            return result.get("ok", False), ""
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8')
-            print(f"Telegram API HTTP Error: {error_body}")
-            return False, error_body
+            return result.get("ok", False)
         except Exception as e:
             print(f"Telegram API Error: {e}")
-            return False, str(e)
+            return False
