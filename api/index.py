@@ -1,10 +1,13 @@
 import os
 import json
-from http.server import BaseHTTPRequestHandler
 import urllib.request
+from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
+
+# Penyimpanan sementara dalam memori server (untuk menangani grup album)
+ALBUM_STORAGE = {}
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -22,41 +25,58 @@ class handler(BaseHTTPRequestHandler):
                     
                     if text.startswith("/start"):
                         parts = text.split(" ")
-                        if len(parts) > 1 and parts[1].startswith("msg_"):
-                            # Mengambil file satuan berdasarkan ID pesan database
+                        if len(parts) > 1 and parts[1].startswith("batch_"):
+                            # Ketika link batch diklik, ambil daftar ID pesan dan kirim semua
+                            batch_key = parts[1]
+                            msg_ids = ALBUM_STORAGE.get(batch_key, [])
+                            
+                            if msg_ids:
+                                self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media sekaligus...")
+                                for db_msg_id in msg_ids:
+                                    self.copy_from_channel(chat_id, db_msg_id)
+                            else:
+                                self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
+                        elif len(parts) > 1 and parts[1].startswith("msg_"):
                             try:
                                 db_msg_id = int(parts[1].replace("msg_", ""))
                                 self.copy_from_channel(chat_id, db_msg_id)
-                            except Exception as err:
-                                print(f"Error parse msg_id: {err}")
-                                self.send_telegram_message(chat_id, "❌ File tidak ditemukan atau link sudah kedaluwarsa.")
+                            except:
+                                self.send_telegram_message(chat_id, "❌ File tidak ditemukan.")
                         else:
                             self.send_telegram_message(
                                 chat_id, 
-                                "Halo! Kirimkan foto atau video ke sini untuk disimpan dan dibuatkan link-nya."
+                                "Halo! Kirimkan foto atau album ke sini untuk dibuatkan link-nya."
                             )
                     elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
-                        media_name = "Media"
-                        if "video" in message:
-                            media_name = "Video"
-                        elif "photo" in message:
-                            media_name = "Foto"
-                        elif "document" in message:
-                            media_name = "Dokumen"
+                        media_group_id = message.get("media_group_id")
                         
-                        # Teruskan file ke Channel Database dan tangkap message_id nya
+                        # Teruskan file ke Channel Database
                         db_msg_id = None
                         if DB_CHANNEL_ID:
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
-                            # Setiap file dibuatkan link khususnya sendiri agar dijamin 100% muncul saat diklik
-                            telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
-                            reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
-                        else:
-                            reply_text = f"⚠️ Gagal menyimpan ke channel database."
-
-                        self.send_telegram_message(chat_id, reply_text)
+                            if media_group_id:
+                                # Jika ini bagian dari album (banyak media sekaligus)
+                                batch_key = f"batch_{media_group_id[-6:]}"
+                                if batch_key not in ALBUM_STORAGE:
+                                    ALBUM_STORAGE[batch_key] = []
+                                
+                                if db_msg_id not in ALBUM_STORAGE[batch_key]:
+                                    ALBUM_STORAGE[batch_key].append(db_msg_id)
+                                
+                                # Kirim link hanya pada file terakhir atau berikan satu link album
+                                telegram_link = f"https://t.me/private_media_db_bot?start={batch_key}"
+                                
+                                # Kirim balasan hanya jika ini file pertama dalam kelompok untuk menghindari spam chat
+                                if len(ALBUM_STORAGE[batch_key]) == 1:
+                                    reply_text = f"✅ *Album Media Berhasil Disimpan!*\n\n🔗 *1 Link untuk Semua Media:*\n{telegram_link}"
+                                    self.send_telegram_message(chat_id, reply_text)
+                            else:
+                                # Jika dikirim satuan
+                                telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
+                                reply_text = f"✅ *Media Berhasil Disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
+                                self.send_telegram_message(chat_id, reply_text)
                             
         except Exception as e:
             print(f"Error utama: {e}")
