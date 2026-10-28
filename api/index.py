@@ -6,6 +6,7 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
+# Pastikan ID channel menggunakan string jika integer bermasalah, atau tetap integer
 DATABASE_CHAT_ID = -4351284345
 
 class handler(BaseHTTPRequestHandler):
@@ -27,7 +28,7 @@ class handler(BaseHTTPRequestHandler):
                             chat_id, 
                             "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
                         )
-                    elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
+                    elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
                         media_name = "Media"
                         if "video" in message:
                             media_name = "Video"
@@ -36,7 +37,7 @@ class handler(BaseHTTPRequestHandler):
                         elif "document" in message:
                             media_name = "Dokumen"
                         
-                        # Coba Forward ke Channel Database
+                        # Forward media ke Channel Database
                         forward_url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
                         forward_payload = {
                             "chat_id": DATABASE_CHAT_ID,
@@ -44,17 +45,25 @@ class handler(BaseHTTPRequestHandler):
                             "message_id": message["message_id"]
                         }
                         
-                        success = self.call_telegram_api(forward_url, forward_payload)
+                        success, err_msg = self.call_telegram_api(forward_url, forward_payload)
                         
-                        # Buat kode unik dan link meskipun forward gagal/berhasil, agar bot tetap merespons
                         random_code = f"file_{random.randint(100000, 999999)}"
                         telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                         
-                        reply_text = (
-                            f"✅ **{media_name} berhasil diproses!**\n\n"
-                            f"🔗 **Link Akses Bot:**\n"
-                            f"{telegram_link}"
-                        )
+                        if success:
+                            reply_text = (
+                                f"✅ **{media_name} berhasil disimpan ke database!**\n\n"
+                                f"🔗 **Link Akses Bot:**\n"
+                                f"{telegram_link}"
+                            )
+                        else:
+                            reply_text = (
+                                f"⚠️ File diproses, tapi gagal masuk database.\n"
+                                f"Info Error: {err_msg}\n\n"
+                                f"🔗 **Link Akses:**\n"
+                                f"{telegram_link}"
+                            )
+                            
                         self.send_telegram_message(chat_id, reply_text)
                     else:
                         if chat_id != DATABASE_CHAT_ID and text:
@@ -81,13 +90,17 @@ class handler(BaseHTTPRequestHandler):
 
     def call_telegram_api(self, url, payload):
         if not TOKEN:
-            return False
+            return False, "Token kosong"
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
             response = urllib.request.urlopen(req)
             result = json.loads(response.read().decode('utf-8'))
-            return result.get("ok", False)
+            return result.get("ok", False), ""
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            print(f"Telegram API HTTP Error: {error_body}")
+            return False, error_body
         except Exception as e:
             print(f"Telegram API Error: {e}")
-            return False
+            return False, str(e)
