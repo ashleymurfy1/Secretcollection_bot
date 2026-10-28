@@ -27,7 +27,8 @@ class handler(BaseHTTPRequestHandler):
                             chat_id, 
                             "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
                         )
-                    elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
+                    # Deteksi semua jenis file atau media
+                    elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         media_name = "Media"
                         if "video" in message:
                             media_name = "Video"
@@ -60,7 +61,7 @@ class handler(BaseHTTPRequestHandler):
                             
                         self.send_telegram_message(chat_id, reply_text)
                     else:
-                        if chat_id != DATABASE_CHAT_ID:
+                        if chat_id != DATABASE_CHAT_ID and text:
                             self.send_telegram_message(chat_id, f"Pesan diterima: {text}")
                             
         except Exception as e:
