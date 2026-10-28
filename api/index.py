@@ -6,7 +6,6 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "Secretcllctn_bot"
-# ID Channel Database yang baru
 DATABASE_CHAT_ID = -4351284345
 
 class handler(BaseHTTPRequestHandler):
@@ -24,18 +23,10 @@ class handler(BaseHTTPRequestHandler):
                     text = message.get("text", "")
                     
                     if text.startswith("/start"):
-                        parts = text.split(" ")
-                        if len(parts) > 1:
-                            payload_code = parts[1]
-                            self.send_telegram_message(
-                                chat_id, 
-                                f"📂 Sedang memuat file untuk kode: `{payload_code}`..."
-                            )
-                        else:
-                            self.send_telegram_message(
-                                chat_id, 
-                                "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
-                            )
+                        self.send_telegram_message(
+                            chat_id, 
+                            "Halo! Kirimkan video atau foto ke sini untuk disimpan dan dibuatkan link-nya."
+                        )
                     elif any(k in message for k in ["video", "document", "photo", "audio", "animation"]):
                         media_name = "Media"
                         if "video" in message:
