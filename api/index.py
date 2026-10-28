@@ -6,6 +6,7 @@ import random
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 BOT_USERNAME = "private_media_db_bot"
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -15,7 +16,6 @@ class handler(BaseHTTPRequestHandler):
             if post_data:
                 update = json.loads(post_data.decode('utf-8'))
                 
-                # Cek apakah ada 'message' atau 'edited_message'
                 message = update.get("message") or update.get("edited_message")
                 
                 if message and "chat" in message:
@@ -40,8 +40,8 @@ class handler(BaseHTTPRequestHandler):
                         telegram_link = f"https://t.me/{BOT_USERNAME}?start={random_code}"
                         
                         reply_text = (
-                            f"✅ **{media_name} berhasil disimpan!**\n\n"
-                            f"🔗 **Link Akses Bot:**\n"
+                            f"✅ *{media_name} berhasil disimpan!*\\n\\n"
+                            f"🔗 *Link Akses Bot:*\\n"
                             f"{telegram_link}"
                         )
                         self.send_telegram_message(chat_id, reply_text)
