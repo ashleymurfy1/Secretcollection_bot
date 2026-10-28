@@ -41,10 +41,11 @@ class handler(BaseHTTPRequestHandler):
 
                         random_code = f"file_{random.randint(100000, 999999)}"
                         
-                        # Ditulis secara manual langsung tanpa variabel agar garis bawah tidak hilang
+                        # Link ditulis manual lengkap dengan garis bawahnya
                         telegram_link = "https://t.me/private_media_db_bot?start=" + random_code
                         
-                        reply_text = f"✅ *{media_name} berhasil disimpan!*\n\n🔗 *Link Akses Bot:*\n{telegram_link}"
+                        # Menggunakan teks biasa tanpa format markdown agar garis bawah link aman
+                        reply_text = f"[OK] {media_name} berhasil disimpan!\n\nLink Akses Bot:\n{telegram_link}"
                         self.send_telegram_message(chat_id, reply_text)
                             
         except Exception as e:
@@ -63,7 +64,8 @@ class handler(BaseHTTPRequestHandler):
 
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        # parse_mode dihapus agar simbol garis bawah di URL tidak dirusak oleh Telegram
+        payload = {"chat_id": chat_id, "text": text}
         self.call_telegram_api(url, payload)
 
     def forward_to_channel(self, from_chat_id, message_id):
