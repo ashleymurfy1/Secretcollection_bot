@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 
@@ -26,14 +27,16 @@ class handler(BaseHTTPRequestHandler):
                     if text.startswith("/start"):
                         parts = text.split(" ")
                         if len(parts) > 1 and parts[1].startswith("batch_"):
-                            # Ketika link batch diklik, ambil daftar ID pesan dan kirim semua
+                            # Ketika link batch diklik, ambil daftar ID pesan dan kirim dengan jeda aman
                             batch_key = parts[1]
                             msg_ids = ALBUM_STORAGE.get(batch_key, [])
                             
                             if msg_ids:
-                                self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media sekaligus...")
+                                self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media dengan aman...")
                                 for db_msg_id in msg_ids:
                                     self.copy_from_channel(chat_id, db_msg_id)
+                                    # Jeda 0.6 detik per file agar tidak terkena banned/rate-limit Telegram
+                                    time.sleep(0.6)
                             else:
                                 self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
                         elif len(parts) > 1 and parts[1].startswith("msg_"):
@@ -65,7 +68,6 @@ class handler(BaseHTTPRequestHandler):
                                 if db_msg_id not in ALBUM_STORAGE[batch_key]:
                                     ALBUM_STORAGE[batch_key].append(db_msg_id)
                                 
-                                # Kirim link hanya pada file terakhir atau berikan satu link album
                                 telegram_link = f"https://t.me/private_media_db_bot?start={batch_key}"
                                 
                                 # Kirim balasan hanya jika ini file pertama dalam kelompok untuk menghindari spam chat
@@ -77,7 +79,7 @@ class handler(BaseHTTPRequestHandler):
                                 telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                 reply_text = f"✅ *Media Berhasil Disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
                                 self.send_telegram_message(chat_id, reply_text)
-                            
+                        
         except Exception as e:
             print(f"Error utama: {e}")
 
@@ -94,7 +96,7 @@ class handler(BaseHTTPRequestHandler):
 
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
         self.call_telegram_api(url, payload)
 
     def forward_to_channel(self, from_chat_id, message_id):
