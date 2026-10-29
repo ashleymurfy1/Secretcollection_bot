@@ -152,15 +152,6 @@ class handler(BaseHTTPRequestHandler):
             return res.get("result", {}).get("message_id")
         return None
 
-    def copy_from_channel(self, chat_id, message_id):
-        url = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
-        payload = {
-            "chat_id": chat_id,
-            "from_chat_id": DB_CHANNEL_ID,
-            "message_id": message_id
-        }
-        self.call_telegram_api(url, payload)
-
     def save_to_supabase(self, group_code, file_id):
         if not SUPABASE_URL or not SUPABASE_KEY:
             return False
@@ -210,10 +201,27 @@ class handler(BaseHTTPRequestHandler):
             response = urllib.request.urlopen(req)
             rows = json.loads(response.read().decode('utf-8'))
             
-            # Kirim semua file satu per satu dengan jeda aman atau gunakan salinan langsung
+            # Ambil semua ID pesan dari database
+            media_list = []
             for row in rows:
                 db_msg_id = int(row["file_id"])
-                self.copy_from_channel(chat_id, db_msg_id)
+                media_list.append({
+                    "type": "photo",
+                    "media": f"attach://file_{db_msg_id}" # Menggunakan referensi file dari channel database
+                })
+            
+            # Karena metode copyMessage antar chat di Telegram tidak bisa langsung digabung jadi sendMediaGroup API standar tanpa file_id eksternal,
+            # kita gunakan trik loop cepat dengan penanganan error pengecualian Vercel, atau cara paling stabil: 
+            # Mengirim salinan pesan satu per satu menggunakan metode copyMessage dalam rentang kilat.
+            for row in rows:
+                db_msg_id = int(row["file_id"])
+                url_copy = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
+                payload = {
+                    "chat_id": chat_id,
+                    "from_chat_id": DB_CHANNEL_ID,
+                    "message_id": db_msg_id
+                }
+                self.call_telegram_api(url_copy, payload)
                 
         except Exception as e:
             print(f"Supabase Read Error: {e}")
