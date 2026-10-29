@@ -7,7 +7,6 @@ from http.server import BaseHTTPRequestHandler
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 
-# Penyimpanan sementara dalam memori server (untuk menangani grup album)
 ALBUM_STORAGE = {}
 
 class handler(BaseHTTPRequestHandler):
@@ -27,7 +26,6 @@ class handler(BaseHTTPRequestHandler):
                     if text.startswith("/start"):
                         parts = text.split(" ")
                         if len(parts) > 1 and parts[1].startswith("batch_"):
-                            # Ketika link batch diklik, ambil daftar ID pesan dan kirim dengan jeda aman
                             batch_key = parts[1]
                             msg_ids = ALBUM_STORAGE.get(batch_key, [])
                             
@@ -35,7 +33,7 @@ class handler(BaseHTTPRequestHandler):
                                 self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media dengan aman...")
                                 for db_msg_id in msg_ids:
                                     self.copy_from_channel(chat_id, db_msg_id)
-                                    time.sleep(0.6) # Jeda aman anti-banned
+                                    time.sleep(0.6)
                             else:
                                 self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
                         elif len(parts) > 1 and parts[1].startswith("msg_"):
@@ -52,30 +50,28 @@ class handler(BaseHTTPRequestHandler):
                     elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         media_group_id = message.get("media_group_id")
                         
-                        # Teruskan file ke Channel Database
                         db_msg_id = None
                         if DB_CHANNEL_ID:
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
                             if media_group_id:
-                                # Gunakan group_id utuh (atau bagian unik yang konsisten) agar tidak terpecah
-                                batch_key = f"batch_{str(media_group_id)}"
+                                # Ambil 10 digit pertama dari media_group_id agar foto dalam satu album disatukan ke 1 kode yang sama persis
+                                batch_key = f"batch_{str(media_group_id)[:10]}"
                                 if batch_key not in ALBUM_STORAGE:
                                     ALBUM_STORAGE[batch_key] = []
                                 
                                 if db_msg_id not in ALBUM_STORAGE[batch_key]:
                                     ALBUM_STORAGE[batch_key].append(db_msg_id)
                                 
-                                # Menggunakan username bot yang benar dengan garis bawah: private_media_db_bot
+                                # Menggunakan username bot dengan garis bawah yang valid: private_media_db_bot
                                 telegram_link = f"https://t.me/private_media_db_bot?start={batch_key}"
                                 
-                                # Kirim balasan hanya pada file pertama agar tidak spam chat
+                                # Kirim balasan hanya jika ini file pertama dalam antrean album
                                 if len(ALBUM_STORAGE[batch_key]) == 1:
                                     reply_text = f"✅ *Album Media Berhasil Disimpan!*\n\n🔗 *1 Link untuk Semua Media:*\n{telegram_link}"
                                     self.send_telegram_message(chat_id, reply_text)
                             else:
-                                # Jika dikirim satuan
                                 telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                 reply_text = f"✅ *Media Berhasil Disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
                                 self.send_telegram_message(chat_id, reply_text)
