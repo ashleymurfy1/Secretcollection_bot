@@ -35,8 +35,7 @@ class handler(BaseHTTPRequestHandler):
                                 self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media dengan aman...")
                                 for db_msg_id in msg_ids:
                                     self.copy_from_channel(chat_id, db_msg_id)
-                                    # Jeda 0.6 detik per file agar tidak terkena banned/rate-limit Telegram
-                                    time.sleep(0.6)
+                                    time.sleep(0.6) # Jeda aman anti-banned
                             else:
                                 self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
                         elif len(parts) > 1 and parts[1].startswith("msg_"):
@@ -60,17 +59,18 @@ class handler(BaseHTTPRequestHandler):
 
                         if db_msg_id:
                             if media_group_id:
-                                # Jika ini bagian dari album (banyak media sekaligus)
-                                batch_key = f"batch_{media_group_id[-6:]}"
+                                # Gunakan group_id utuh (atau bagian unik yang konsisten) agar tidak terpecah
+                                batch_key = f"batch_{str(media_group_id)}"
                                 if batch_key not in ALBUM_STORAGE:
                                     ALBUM_STORAGE[batch_key] = []
                                 
                                 if db_msg_id not in ALBUM_STORAGE[batch_key]:
                                     ALBUM_STORAGE[batch_key].append(db_msg_id)
                                 
+                                # Menggunakan username bot yang benar dengan garis bawah: private_media_db_bot
                                 telegram_link = f"https://t.me/private_media_db_bot?start={batch_key}"
                                 
-                                # Kirim balasan hanya jika ini file pertama dalam kelompok untuk menghindari spam chat
+                                # Kirim balasan hanya pada file pertama agar tidak spam chat
                                 if len(ALBUM_STORAGE[batch_key]) == 1:
                                     reply_text = f"✅ *Album Media Berhasil Disimpan!*\n\n🔗 *1 Link untuk Semua Media:*\n{telegram_link}"
                                     self.send_telegram_message(chat_id, reply_text)
