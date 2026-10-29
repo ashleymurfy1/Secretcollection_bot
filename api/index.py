@@ -79,14 +79,17 @@ class handler(BaseHTTPRequestHandler):
                                 
                                 if media_group_id:
                                     group_code = f"grp_{media_group_id}"
-                                    self.save_to_supabase(group_code, str(db_msg_id))
-                                    telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
-                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
+                                    is_first = self.save_to_supabase(group_code, str(db_msg_id))
+                                    
+                                    # Hanya kirim 1 balasan link untuk album pertama kali
+                                    if is_first:
+                                        telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
+                                        reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
+                                        self.send_telegram_message(chat_id, reply_text)
                                 else:
                                     telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
-                                    
-                                self.send_telegram_message(chat_id, reply_text)
+                                    self.send_telegram_message(chat_id, reply_text)
                             
         except Exception as e:
             print(f"Error utama: {e}")
@@ -156,21 +159,40 @@ class handler(BaseHTTPRequestHandler):
 
     def save_to_supabase(self, group_code, file_id):
         if not SUPABASE_URL or not SUPABASE_KEY:
-            return
-        url = f"{SUPABASE_URL}/rest/v1/media_groups"
-        payload = {"group_code": group_code, "file_id": file_id}
+            return False
+        
+        # Cek apakah group_code sudah pernah ada sebelumnya
+        check_url = f"{SUPABASE_URL}/rest/v1/media_groups?group_code=eq.{group_code}&select=file_id"
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
+        try:
+            req_check = urllib.request.Request(check_url, headers=headers, method="GET")
+            res_check = urllib.request.urlopen(req_check)
+            existing = json.loads(res_check.read().decode('utf-8'))
+            is_first = len(existing) == 0
+        except:
+            is_first = True
+
+        # Simpan file ke Supabase
+        url = f"{SUPABASE_URL}/rest/v1/media_groups"
+        payload = {"group_code": group_code, "file_id": file_id}
+        post_headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=minimal"
+            "Prefer": "return=minimal"
         }
         data = json.dumps(payload).encode('utf-8')
         try:
-            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            req = urllib.request.Request(url, data=data, headers=post_headers, method="POST")
             urllib.request.urlopen(req)
         except Exception as e:
             print(f"Supabase Save Error: {e}")
+            
+        return is_first
 
     def send_media_group_from_db(self, chat_id, group_code):
         if not SUPABASE_URL or not SUPABASE_KEY:
