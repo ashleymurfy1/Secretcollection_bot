@@ -78,7 +78,6 @@ class handler(BaseHTTPRequestHandler):
                                 media_group_id = message.get("media_group_id")
                                 
                                 if media_group_id:
-                                    # Ambil 10 digit pertama dari media_group_id agar foto dalam satu album yang terpecah tetap masuk ke 1 kode yang sama
                                     short_group_id = str(media_group_id)[:10]
                                     group_code = f"grp_{short_group_id}"
                                     is_first = self.save_to_supabase(group_code, str(db_msg_id))
@@ -206,9 +205,12 @@ class handler(BaseHTTPRequestHandler):
             req = urllib.request.Request(url, headers=headers, method="GET")
             response = urllib.request.urlopen(req)
             rows = json.loads(response.read().decode('utf-8'))
+            
+            # Ambil semua ID file dari database lalu kirim secara bertahap cepat
             for row in rows:
                 db_msg_id = int(row["file_id"])
                 self.copy_from_channel(chat_id, db_msg_id)
+                
         except Exception as e:
             print(f"Supabase Read Error: {e}")
             self.send_telegram_message(chat_id, "Gagal memuat album.")
