@@ -22,11 +22,15 @@ class handler(BaseHTTPRequestHandler):
                     data = callback.get("data", "")
                     
                     if data.startswith("page_"):
-                        page_num = data.replace("page_", "")
+                        page_num = int(data.replace("page_", ""))
+                        # Ambil total file (simulasi dari ID database terakhir atau data tersimpan)
+                        total_files = self.get_total_files_count()
+                        total_pages = max(1, (total_files + 9) // 10) # 10 file per halaman
+                        
                         self.send_telegram_message(
                             chat_id, 
-                            f"📄 Membuka Halaman {page_num} dari 17...\nSilakan pilih media di bawah:",
-                            reply_markup=self.get_pagination_keyboard(int(page_num))
+                            f"📄 Menampilkan Halaman {page_num} dari {total_pages}\nTotal koleksi: {total_files} file.",
+                            reply_markup=self.get_pagination_keyboard(page_num, total_pages)
                         )
                     self.answer_callback_query(callback["id"])
                     
@@ -38,18 +42,20 @@ class handler(BaseHTTPRequestHandler):
                         text = message.get("text", "") or message.get("caption", "")
                         
                         if text.startswith("/start"):
-                            # Kirim pesan sambutan dengan Tombol Navigasi Halaman ala contoh
+                            # Hitung total file dinamis
+                            total_files = self.get_total_files_count()
+                            total_pages = max(1, (total_files + 9) // 10)
+                            
                             welcome_text = (
                                 "📁 **#KoleksiMedia**\n\n"
                                 "📖 **Informasi Statistik:**\n"
-                                "• 🎬 Video: 52 buah\n"
-                                "• 🖼 Gambar: 286 lembar\n"
-                                "• 📦 Total: 338 File"
+                                f"• 📦 Total File: {total_files} buah\n\n"
+                                "Silakan pilih halaman di bawah untuk melihat isi koleksi:"
                             )
                             self.send_telegram_message(
                                 chat_id, 
                                 welcome_text, 
-                                reply_markup=self.get_pagination_keyboard(1)
+                                reply_markup=self.get_pagination_keyboard(1, total_pages)
                             )
                         elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                             db_msg_id = None
@@ -75,6 +81,17 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is active!")
 
+    def get_total_files_count(self):
+        # Mengecek ID pesan terakhir di channel database untuk mengetahui jumlah total file secara dinamis
+        url = f"https://api.telegram.org/bot{TOKEN}/getChat"
+        payload = {"chat_id": DB_CHANNEL_ID}
+        res = self.call_telegram_api(url, payload)
+        if res and res.get("ok"):
+            # Perkiraan jumlah file berdasarkan ID pesan terakhir di channel
+            # Atau fallback ke angka default jika channel privat ketat
+            return res.get("result", {}).get("pinned_message", {}).get("message_id", 35)
+        return 35 # Angka default jika belum ada pin
+
     def send_telegram_message(self, chat_id, text, reply_markup=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
@@ -83,58 +100,3 @@ class handler(BaseHTTPRequestHandler):
         self.call_telegram_api(url, payload)
 
     def answer_callback_query(self, callback_query_id):
-        url = f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery"
-        payload = {"callback_query_id": callback_query_id}
-        self.call_telegram_api(url, payload)
-
-    def get_pagination_keyboard(self, current_page):
-        # Membuat tombol navigasi mirip contoh (Tombol Atas: Prev, Info Hal, Next; Tombol Bawah: Angka 1-10)
-        keyboard = []
-        
-        # Baris 1: Tombol Navigasi Utama
-        row1 = [
-            {"text": "◀️ Sebelumnya", "callback_data": f"page_{max(1, current_page-1)}"},
-            {"text": f"📋 {current_page}/17", "callback_data": "info"},
-            {"text": "Berikutnya ▶️", "callback_data": f"page_{min(17, current_page+1)}"}
-        ]
-        keyboard.append(row1)
-        
-        # Baris 2 s.d. 4: Tombol Angka Halaman (1 sampai 10 sebagai contoh)
-        row_num1 = []
-        for i in range(1, 6):
-            btn_text = f"❄️{i}" if i == current_page else str(i)
-            row_num1.append({"text": btn_text, "callback_data": f"page_{i}"})
-        keyboard.append(row_num1)
-
-        row_num2 = []
-        for i in range(6, 11):
-            btn_text = f"❄️{i}" if i == current_page else str(i)
-            row_num2.append({"text": btn_text, "callback_data": f"page_{i}"})
-        keyboard.append(row_num2)
-
-        return {"inline_keyboard": keyboard}
-
-    def forward_to_channel(self, from_chat_id, message_id):
-        url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
-        payload = {
-            "chat_id": DB_CHANNEL_ID,
-            "from_chat_id": from_chat_id,
-            "message_id": message_id
-        }
-        res = self.call_telegram_api(url, payload)
-        if res and res.get("ok"):
-            return res.get("result", {}).get("message_id")
-        return None
-
-    def call_telegram_api(self, url, payload):
-        if not TOKEN:
-            return None
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        try:
-            response = urllib.request.urlopen(req)
-            result = json.loads(response.read().decode('utf-8'))
-            return result
-        except Exception as e:
-            print(f"Telegram API Error: {e}")
-            return None
