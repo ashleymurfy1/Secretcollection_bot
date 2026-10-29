@@ -1,10 +1,13 @@
 import os
 import json
+import uuid
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -28,6 +31,10 @@ class handler(BaseHTTPRequestHandler):
                             f"Menampilkan Halaman {page_num} dari {total_pages}\nSilakan pilih halaman di bawah:",
                             reply_markup=self.get_pagination_keyboard(page_num, total_pages)
                         )
+                    elif data.startswith("get_group_"):
+                        group_code = data.replace("get_group_", "")
+                        self.send_media_group_from_db(chat_id, group_code)
+                        
                     self.answer_callback_query(callback["id"])
                     
                 else:
@@ -38,13 +45,17 @@ class handler(BaseHTTPRequestHandler):
                         
                         if text.startswith("/start"):
                             parts = text.split(" ")
-                            if len(parts) > 1 and parts[1].startswith("msg_"):
-                                try:
-                                    db_msg_id = int(parts[1].replace("msg_", ""))
-                                    self.copy_from_channel(chat_id, db_msg_id)
-                                except Exception as err:
-                                    print(f"Error parse msg_id: {err}")
-                                    self.send_telegram_message(chat_id, "File tidak ditemukan.")
+                            if len(parts) > 1:
+                                param = parts[1]
+                                if param.startswith("msg_"):
+                                    try:
+                                        db_msg_id = int(param.replace("msg_", ""))
+                                        self.copy_from_channel(chat_id, db_msg_id)
+                                    except Exception as err:
+                                        print(f"Error parse msg_id: {err}")
+                                        self.send_telegram_message(chat_id, "File tidak ditemukan.")
+                                elif param.startswith("grp_"):
+                                    self.send_media_group_from_db(chat_id, param)
                             else:
                                 total_pages = 5
                                 welcome_text = (
@@ -65,12 +76,14 @@ class handler(BaseHTTPRequestHandler):
 
                             if db_msg_id:
                                 media_group_id = message.get("media_group_id")
-                                telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                 
-                                # Jika ini bagian dari album, kita beri label khusus agar lebih rapi
                                 if media_group_id:
-                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses:\n{telegram_link}"
+                                    group_code = f"grp_{uuid.uuid4().hex[:8]}"
+                                    self.save_to_supabase(group_code, str(db_msg_id))
+                                    telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
+                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua Foto dalam Album):\n{telegram_link}"
                                 else:
+                                    telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
                                     
                                 self.send_telegram_message(chat_id, reply_text)
@@ -140,6 +153,44 @@ class handler(BaseHTTPRequestHandler):
             "message_id": message_id
         }
         self.call_telegram_api(url, payload)
+
+    def save_to_supabase(self, group_code, file_id):
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+        url = f"{SUPABASE_URL}/rest/v1/media_groups"
+        payload = {"group_code": group_code, "file_id": file_id}
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        }
+        data = json.dumps(payload).encode('utf-8')
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            urllib.request.urlopen(req)
+        except Exception as e:
+            print(f"Supabase Save Error: {e}")
+
+    def send_media_group_from_db(self, chat_id, group_code):
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+        url = f"{SUPABASE_URL}/rest/v1/media_groups?group_code=eq.{group_code}&select=file_id"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            response = urllib.request.urlopen(req)
+            rows = json.loads(response.read().decode('utf-8'))
+            for row in rows:
+                db_msg_id = int(row["file_id"])
+                self.copy_from_channel(chat_id, db_msg_id)
+        except Exception as e:
+            print(f"Supabase Read Error: {e}")
+            self.send_telegram_message(chat_id, "Gagal memuat album.")
 
     def call_telegram_api(self, url, payload):
         if not TOKEN:
