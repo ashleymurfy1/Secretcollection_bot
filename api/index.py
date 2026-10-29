@@ -209,9 +209,16 @@ class handler(BaseHTTPRequestHandler):
             req = urllib.request.Request(url, headers=headers, method="GET")
             response = urllib.request.urlopen(req)
             rows = json.loads(response.read().decode('utf-8'))
+            
+            # Kumpulkan semua ID pesan dari database
+            media_items = []
             for row in rows:
                 db_msg_id = int(row["file_id"])
+                # Kita gunakan forward/copy dari channel database ke chat tujuan
+                # Agar bisa jadi album, kita kirimkan satu per satu dengan cepat atau pakai sendMediaGroup jika berupa file asli.
+                # Cara paling aman dan stabil di Telegram API tanpa error tipe media campuran adalah mengirim salinannya beruntun secara instan:
                 self.copy_from_channel(chat_id, db_msg_id)
+                
         except Exception as e:
             print(f"Supabase Read Error: {e}")
             self.send_telegram_message(chat_id, "Gagal memuat album.")
