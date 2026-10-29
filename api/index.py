@@ -78,10 +78,10 @@ class handler(BaseHTTPRequestHandler):
                                 media_group_id = message.get("media_group_id")
                                 
                                 if media_group_id:
-                                    group_code = f"grp_{uuid.uuid4().hex[:8]}"
+                                    group_code = f"grp_{media_group_id}"
                                     self.save_to_supabase(group_code, str(db_msg_id))
                                     telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
-                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua Foto dalam Album):\n{telegram_link}"
+                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
                                 else:
                                     telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
@@ -163,7 +163,7 @@ class handler(BaseHTTPRequestHandler):
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json",
-            "Prefer": "return=minimal"
+            "Prefer": "resolution=merge-duplicates,return=minimal"
         }
         data = json.dumps(payload).encode('utf-8')
         try:
