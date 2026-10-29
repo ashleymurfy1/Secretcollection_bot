@@ -14,44 +14,71 @@ class handler(BaseHTTPRequestHandler):
             
             if post_data:
                 update = json.loads(post_data.decode('utf-8'))
-                print("Update diterima dari Telegram:", json.dumps(update)) # Cek log Vercel nanti
                 
-                message = update.get("message") or update.get("edited_message")
-                
-                if message and "chat" in message:
-                    chat_id = message["chat"]["id"]
-                    text = message.get("text", "") or message.get("caption", "")
+                if "callback_query" in update:
+                    callback = update["callback_query"]
+                    chat_id = callback["message"]["chat"]["id"]
+                    data = callback.get("data", "")
                     
-                    if text.startswith("/start"):
-                        parts = text.split(" ")
-                        if len(parts) > 1 and parts[1].startswith("msg_"):
-                            try:
-                                db_msg_id = int(parts[1].replace("msg_", ""))
-                                self.copy_from_channel(chat_id, db_msg_id)
-                            except Exception as err:
-                                print(f"Error parse msg_id: {err}")
-                                self.send_telegram_message(chat_id, "File tidak ditemukan.")
-                        else:
-                            self.send_telegram_message(
-                                chat_id, 
-                                "Halo! Kirimkan foto atau video ke sini untuk disimpan dan dibuatkan link-nya."
-                            )
-                    elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
-                        if not DB_CHANNEL_ID or not TOKEN:
-                            print("ERROR: TELEGRAM_TOKEN atau DB_CHANNEL_ID belum diatur di Environment Variables Vercel!")
-                            self.send_telegram_message(chat_id, "Konfigurasi bot belum lengkap di server.")
-                            return
+                    if data.startswith("page_"):
+                        page_num = int(data.replace("page_", ""))
+                        total_pages = 5
+                        self.send_telegram_message(
+                            chat_id, 
+                            f"Menampilkan Halaman {page_num} dari {total_pages}\nSilakan pilih halaman di bawah:",
+                            reply_markup=self.get_pagination_keyboard(page_num, total_pages)
+                        )
+                    self.answer_callback_query(callback["id"])
+                    
+                else:
+                    message = update.get("message") or update.get("edited_message")
+                    if message and "chat" in message:
+                        chat_id = message["chat"]["id"]
+                        text = message.get("text", "") or message.get("caption", "")
+                        
+                        if text.startswith("/start"):
+                            parts = text.split(" ")
+                            if len(parts) > 1 and parts[1].startswith("msg_"):
+                                try:
+                                    db_msg_id = int(parts[1].replace("msg_", ""))
+                                    self.copy_from_channel(chat_id, db_msg_id)
+                                except Exception as err:
+                                    print(f"Error parse msg_id: {err}")
+                                    self.send_telegram_message(chat_id, "File tidak ditemukan.")
+                            else:
+                                total_pages = 5
+                                welcome_text = (
+                                    "Koleksi Media\n\n"
+                                    "Informasi Statistik:\n"
+                                    "- Status: Bot Aktif & Stabil\n\n"
+                                    "Silakan pilih halaman di bawah untuk melihat isi koleksi:"
+                                )
+                                self.send_telegram_message(
+                                    chat_id, 
+                                    welcome_text, 
+                                    reply_markup=self.get_pagination_keyboard(1, total_pages)
+                                )
+                        elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
+                            # Cek apakah ini bagian dari album (media_group_id)
+                            media_group_id = message.get("media_group_id")
+                            
+                            db_msg_id = None
+                            if DB_CHANNEL_ID:
+                                db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
-                        db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
-                        if db_msg_id:
-                            telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
-                            reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
-                            self.send_telegram_message(chat_id, reply_text)
-                        else:
-                            self.send_telegram_message(chat_id, "Gagal menyimpan ke channel database. Pastikan bot sudah jadi Admin di channel tersebut!")
+                            if db_msg_id:
+                                telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
+                                
+                                # Jika ini album, berikan keterangan agar pengguna tahu
+                                if media_group_id:
+                                    reply_text = f"Media Album Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
+                                else:
+                                    reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
+                                    
+                                self.send_telegram_message(chat_id, reply_text)
                             
         except Exception as e:
-            print(f"Error utama pada server: {e}")
+            print(f"Error utama: {e}")
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
@@ -64,10 +91,36 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is active!")
 
-    def send_telegram_message(self, chat_id, text):
+    def send_telegram_message(self, chat_id, text, reply_markup=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         self.call_telegram_api(url, payload)
+
+    def answer_callback_query(self, callback_query_id):
+        url = f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery"
+        payload = {"callback_query_id": callback_query_id}
+        self.call_telegram_api(url, payload)
+
+    def get_pagination_keyboard(self, current_page, total_pages):
+        keyboard = []
+        row1 = [
+            {"text": "Sebelumnya", "callback_data": f"page_{max(1, current_page-1)}"},
+            {"text": f"{current_page}/{total_pages}", "callback_data": "info"},
+            {"text": "Berikutnya", "callback_data": f"page_{min(total_pages, current_page+1)}"}
+        ]
+        keyboard.append(row1)
+        
+        row_num = []
+        for i in range(1, total_pages + 1):
+            btn_text = f"[{i}]" if i == current_page else str(i)
+            row_num.append({"text": btn_text, "callback_data": f"page_{i}"})
+        
+        if row_num:
+            keyboard.append(row_num)
+
+        return {"inline_keyboard": keyboard}
 
     def forward_to_channel(self, from_chat_id, message_id):
         url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
@@ -79,7 +132,6 @@ class handler(BaseHTTPRequestHandler):
         res = self.call_telegram_api(url, payload)
         if res and res.get("ok"):
             return res.get("result", {}).get("message_id")
-        print(f"Gagal forward ke channel: {res}")
         return None
 
     def copy_from_channel(self, chat_id, message_id):
