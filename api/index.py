@@ -15,7 +15,6 @@ class handler(BaseHTTPRequestHandler):
             if post_data:
                 update = json.loads(post_data.decode('utf-8'))
                 
-                # Menangani klik Tombol Inline (Callback Query)
                 if "callback_query" in update:
                     callback = update["callback_query"]
                     chat_id = callback["message"]["chat"]["id"]
@@ -24,7 +23,6 @@ class handler(BaseHTTPRequestHandler):
                     if data.startswith("page_"):
                         page_num = int(data.replace("page_", ""))
                         total_pages = 5
-                        
                         self.send_telegram_message(
                             chat_id, 
                             f"Menampilkan Halaman {page_num} dari {total_pages}\nSilakan pilih halaman di bawah:",
@@ -32,7 +30,6 @@ class handler(BaseHTTPRequestHandler):
                         )
                     self.answer_callback_query(callback["id"])
                     
-                # Menangani Pesan Teks / Media biasa
                 else:
                     message = update.get("message") or update.get("edited_message")
                     if message and "chat" in message:
@@ -47,7 +44,7 @@ class handler(BaseHTTPRequestHandler):
                                     self.copy_from_channel(chat_id, db_msg_id)
                                 except Exception as err:
                                     print(f"Error parse msg_id: {err}")
-                                    self.send_telegram_message(chat_id, "File tidak ditemukan atau link sudah kedaluwarsa.")
+                                    self.send_telegram_message(chat_id, "File tidak ditemukan.")
                             else:
                                 total_pages = 5
                                 welcome_text = (
@@ -67,7 +64,6 @@ class handler(BaseHTTPRequestHandler):
                                 db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                             if db_msg_id:
-                                # Link ditulis manual dengan username bot asli yang memiliki garis bawah
                                 telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                 reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
                                 self.send_telegram_message(chat_id, reply_text)
@@ -88,7 +84,6 @@ class handler(BaseHTTPRequestHandler):
 
     def send_telegram_message(self, chat_id, text, reply_markup=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        # parse_mode DIHAPUS agar garis bawah pada username bot aman dari sensor Telegram
         payload = {"chat_id": chat_id, "text": text}
         if reply_markup:
             payload["reply_markup"] = reply_markup
@@ -96,13 +91,4 @@ class handler(BaseHTTPRequestHandler):
 
     def answer_callback_query(self, callback_query_id):
         url = f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery"
-        payload = {"callback_query_id": callback_query_id}
-        self.call_telegram_api(url, payload)
-
-    def get_pagination_keyboard(self, current_page, total_pages):
-        keyboard = []
-        
-        row1 = [
-            {"text": "Sebelumnya", "callback_data": f"page_{max(1, current_page-1)}"},
-            {"text": f"{current_page}/{total_pages}", "callback_data": "info"},
-            {"text": "Berikutnya", "callback_data": f"page_{min(total_pages, current_page+1)}
+        payload = {"callback_query_id": callback_query
