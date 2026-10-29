@@ -59,19 +59,17 @@ class handler(BaseHTTPRequestHandler):
                                     reply_markup=self.get_pagination_keyboard(1, total_pages)
                                 )
                         elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
-                            # Cek apakah ini bagian dari album (media_group_id)
-                            media_group_id = message.get("media_group_id")
-                            
                             db_msg_id = None
                             if DB_CHANNEL_ID:
                                 db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                             if db_msg_id:
+                                media_group_id = message.get("media_group_id")
                                 telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                 
-                                # Jika ini album, berikan keterangan agar pengguna tahu
+                                # Jika ini bagian dari album, kita beri label khusus agar lebih rapi
                                 if media_group_id:
-                                    reply_text = f"Media Album Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
+                                    reply_text = f"📦 [Album Media Tersimpan]\nLink Akses:\n{telegram_link}"
                                 else:
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
                                     
