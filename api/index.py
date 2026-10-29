@@ -63,17 +63,15 @@ class handler(BaseHTTPRequestHandler):
                                 if db_msg_id not in ALBUM_STORAGE[batch_key]:
                                     ALBUM_STORAGE[batch_key].append(db_msg_id)
                                 
-                                # Menggunakan string terpisah agar garis bawah tidak hilang
-                                bot_username = "private_media_db_bot"
-                                telegram_link = f"https://t.me/{bot_username}?start={batch_key}"
+                                # Menggabungkan string secara manual agar garis bawah tidak hilang
+                                telegram_link = "https://t.me/private_media_db_bot?start=" + batch_key
                                 
                                 if len(ALBUM_STORAGE[batch_key]) == 1:
-                                    reply_text = f"✅ *Album Media Berhasil Disimpan!*\n\n🔗 *1 Link untuk Semua Media:*\n{telegram_link}"
+                                    reply_text = "✅ *Album Media Berhasil Disimpan!*\n\n🔗 *1 Link untuk Semua Media:*\n" + telegram_link
                                     self.send_telegram_message(chat_id, reply_text)
                             else:
-                                bot_username = "private_media_db_bot"
-                                telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
-                                reply_text = f"✅ *Media Berhasil Disimpan!*\n\n🔗 *Link Akses:*\n{telegram_link}"
+                                telegram_link = "https://t.me/private_media_db_bot?start=msg_" + str(db_msg_id)
+                                reply_text = "✅ *Media Berhasil Disimpan!*\n\n🔗 *Link Akses:*\n" + telegram_link
                                 self.send_telegram_message(chat_id, reply_text)
                         
         except Exception as e:
