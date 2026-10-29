@@ -78,7 +78,9 @@ class handler(BaseHTTPRequestHandler):
                                 media_group_id = message.get("media_group_id")
                                 
                                 if media_group_id:
-                                    group_code = f"grp_{media_group_id}"
+                                    # Ambil 10 digit pertama dari media_group_id agar foto dalam satu album yang terpecah tetap masuk ke 1 kode yang sama
+                                    short_group_id = str(media_group_id)[:10]
+                                    group_code = f"grp_{short_group_id}"
                                     is_first = self.save_to_supabase(group_code, str(db_msg_id))
                                     
                                     if is_first:
