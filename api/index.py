@@ -87,7 +87,10 @@ class handler(BaseHTTPRequestHandler):
                                         reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
                                         self.send_telegram_message(chat_id, reply_text)
                                 else:
-                                    telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
+                                    # Jika dikirim satuan (bukan album)
+                                    group_code = f"grp_single_{uuid.uuid4().hex[:8]}"
+                                    self.save_to_supabase(group_code, str(db_msg_id))
+                                    telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
                                     self.send_telegram_message(chat_id, reply_text)
                             
@@ -161,7 +164,6 @@ class handler(BaseHTTPRequestHandler):
         if not SUPABASE_URL or not SUPABASE_KEY:
             return False
         
-        # Cek apakah group_code sudah pernah ada sebelumnya
         check_url = f"{SUPABASE_URL}/rest/v1/media_groups?group_code=eq.{group_code}&select=file_id"
         headers = {
             "apikey": SUPABASE_KEY,
@@ -176,7 +178,6 @@ class handler(BaseHTTPRequestHandler):
         except:
             is_first = True
 
-        # Simpan file ke Supabase
         url = f"{SUPABASE_URL}/rest/v1/media_groups"
         payload = {"group_code": group_code, "file_id": file_id}
         post_headers = {
