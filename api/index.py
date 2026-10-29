@@ -81,16 +81,17 @@ class handler(BaseHTTPRequestHandler):
                                     group_code = f"grp_{media_group_id}"
                                     is_first = self.save_to_supabase(group_code, str(db_msg_id))
                                     
-                                    # Hanya kirim 1 balasan link untuk album pertama kali
                                     if is_first:
                                         telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
-                                        reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
-                                        self.send_telegram_message(chat_id, reply_text)
+                                        reply_text = f"📦 **[Album Media Tersimpan]**\nKlik tombol di bawah untuk membuka semua file dalam album ini:"
+                                        reply_markup = {
+                                            "inline_keyboard": [
+                                                [{"text": "📂 Buka Album Ini", "url": telegram_link}]
+                                            ]
+                                        }
+                                        self.send_telegram_message(chat_id, reply_text, reply_markup=reply_markup)
                                 else:
-                                    # Jika dikirim satuan (bukan album)
-                                    group_code = f"grp_single_{uuid.uuid4().hex[:8]}"
-                                    self.save_to_supabase(group_code, str(db_msg_id))
-                                    telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
+                                    telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
                                     self.send_telegram_message(chat_id, reply_text)
                             
@@ -110,7 +111,7 @@ class handler(BaseHTTPRequestHandler):
 
     def send_telegram_message(self, chat_id, text, reply_markup=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
         if reply_markup:
             payload["reply_markup"] = reply_markup
         self.call_telegram_api(url, payload)
