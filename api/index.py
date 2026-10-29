@@ -83,13 +83,8 @@ class handler(BaseHTTPRequestHandler):
                                     
                                     if is_first:
                                         telegram_link = f"https://t.me/private_media_db_bot?start={group_code}"
-                                        reply_text = f"📦 **[Album Media Tersimpan]**\nKlik tombol di bawah untuk membuka semua file dalam album ini:"
-                                        reply_markup = {
-                                            "inline_keyboard": [
-                                                [{"text": "📂 Buka Album Ini", "url": telegram_link}]
-                                            ]
-                                        }
-                                        self.send_telegram_message(chat_id, reply_text, reply_markup=reply_markup)
+                                        reply_text = f"📦 [Album Media Tersimpan]\nLink Akses (Semua File dalam Album):\n{telegram_link}"
+                                        self.send_telegram_message(chat_id, reply_text)
                                 else:
                                     telegram_link = f"https://t.me/private_media_db_bot?start=msg_{db_msg_id}"
                                     reply_text = f"Media Berhasil Disimpan!\n\nLink Akses:\n{telegram_link}"
@@ -111,7 +106,7 @@ class handler(BaseHTTPRequestHandler):
 
     def send_telegram_message(self, chat_id, text, reply_markup=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        payload = {"chat_id": chat_id, "text": text}
         if reply_markup:
             payload["reply_markup"] = reply_markup
         self.call_telegram_api(url, payload)
@@ -151,6 +146,15 @@ class handler(BaseHTTPRequestHandler):
         if res and res.get("ok"):
             return res.get("result", {}).get("message_id")
         return None
+
+    def copy_from_channel(self, chat_id, message_id):
+        url = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
+        payload = {
+            "chat_id": chat_id,
+            "from_chat_id": DB_CHANNEL_ID,
+            "message_id": message_id
+        }
+        self.call_telegram_api(url, payload)
 
     def save_to_supabase(self, group_code, file_id):
         if not SUPABASE_URL or not SUPABASE_KEY:
@@ -200,29 +204,9 @@ class handler(BaseHTTPRequestHandler):
             req = urllib.request.Request(url, headers=headers, method="GET")
             response = urllib.request.urlopen(req)
             rows = json.loads(response.read().decode('utf-8'))
-            
-            # Ambil semua ID pesan dari database
-            media_list = []
             for row in rows:
                 db_msg_id = int(row["file_id"])
-                media_list.append({
-                    "type": "photo",
-                    "media": f"attach://file_{db_msg_id}" # Menggunakan referensi file dari channel database
-                })
-            
-            # Karena metode copyMessage antar chat di Telegram tidak bisa langsung digabung jadi sendMediaGroup API standar tanpa file_id eksternal,
-            # kita gunakan trik loop cepat dengan penanganan error pengecualian Vercel, atau cara paling stabil: 
-            # Mengirim salinan pesan satu per satu menggunakan metode copyMessage dalam rentang kilat.
-            for row in rows:
-                db_msg_id = int(row["file_id"])
-                url_copy = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
-                payload = {
-                    "chat_id": chat_id,
-                    "from_chat_id": DB_CHANNEL_ID,
-                    "message_id": db_msg_id
-                }
-                self.call_telegram_api(url_copy, payload)
-                
+                self.copy_from_channel(chat_id, db_msg_id)
         except Exception as e:
             print(f"Supabase Read Error: {e}")
             self.send_telegram_message(chat_id, "Gagal memuat album.")
