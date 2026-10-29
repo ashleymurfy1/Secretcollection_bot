@@ -210,13 +210,9 @@ class handler(BaseHTTPRequestHandler):
             response = urllib.request.urlopen(req)
             rows = json.loads(response.read().decode('utf-8'))
             
-            # Kumpulkan semua ID pesan dari database
-            media_items = []
+            # Kirim semua file satu per satu dengan jeda aman atau gunakan salinan langsung
             for row in rows:
                 db_msg_id = int(row["file_id"])
-                # Kita gunakan forward/copy dari channel database ke chat tujuan
-                # Agar bisa jadi album, kita kirimkan satu per satu dengan cepat atau pakai sendMediaGroup jika berupa file asli.
-                # Cara paling aman dan stabil di Telegram API tanpa error tipe media campuran adalah mengirim salinannya beruntun secara instan:
                 self.copy_from_channel(chat_id, db_msg_id)
                 
         except Exception as e:
