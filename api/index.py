@@ -6,8 +6,6 @@ from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-# Bisa menampung banyak channel dipisah koma, contoh: "@channel1, @channel2"
-FORCE_SUB_CHANNELS = os.environ.get('FORCE_SUB_CHANNEL', '') 
 
 ALBUM_STORAGE = {}
 
@@ -26,7 +24,7 @@ class handler(BaseHTTPRequestHandler):
                     user_id = message["from"]["id"]
                     text = message.get("text", "") or message.get("caption", "")
                     
-                    # Cek Force Subscription untuk banyak channel
+                    # Cek Force Subscription dari semua variabel Vercel yang mungkin diisi
                     unsubscribed_channels = self.get_unsubscribed_channels(user_id)
                     if unsubscribed_channels:
                         list_ch = "\n".join([f"• {ch}" for ch in unsubscribed_channels])
@@ -103,14 +101,21 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is active!")
 
     def get_unsubscribed_channels(self, user_id):
-        if not FORCE_SUB_CHANNELS:
+        # Mengambil dari semua kemungkinan variabel environment di Vercel
+        raw_channels = []
+        for key in ["FORCE_SUB_CHANNEL", "FORCE_SUB_CHANNEL1", "FORCE_SUB_CHANNEL2", "FORCE_SUB_CHANNEL3"]:
+            val = os.environ.get(key, "").strip()
+            if val:
+                # Mendukung pemisahan koma juga per variabel
+                for ch in val.split(","):
+                    if ch.strip():
+                        raw_channels.append(ch.strip())
+
+        if not raw_channels:
             return []
         
-        # Memecah daftar channel berdasarkan koma
-        channels = [ch.strip() for ch in FORCE_SUB_CHANNELS.split(",") if ch.strip()]
         unsubscribed = []
-        
-        for channel in channels:
+        for channel in raw_channels:
             url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={channel}&user_id={user_id}"
             try:
                 req = urllib.request.Request(url)
