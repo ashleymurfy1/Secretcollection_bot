@@ -24,12 +24,23 @@ class handler(BaseHTTPRequestHandler):
                     user_id = message["from"]["id"]
                     text = message.get("text", "") or message.get("caption", "")
                     
-                    # Cek Force Subscription dari semua variabel Vercel yang mungkin diisi
+                    # Cek Force Subscription
                     unsubscribed_channels = self.get_unsubscribed_channels(user_id)
                     if unsubscribed_channels:
-                        list_ch = "\n".join([f"• {ch}" for ch in unsubscribed_channels])
-                        join_text = f"⚠️ **Mohon Bergabung Terlebih Dahulu!**\n\nKamu harus bergabung ke channel berikut sebelum bisa menggunakan bot:\n\n{list_ch}\n\nSilakan bergabung, lalu kirim ulang /start atau kirim file."
-                        self.send_telegram_message(chat_id, join_text)
+                        # Buat tombol inline untuk masing-masing channel yang belum di-join
+                        inline_keyboard = []
+                        for idx, ch in enumerate(unsubscribed_channels, 1):
+                            # Jika formatnya ID angka, kita arahkan pakai link t.me/c/... atau tombol ajakan
+                            # Paling aman menggunakan invite link atau username jika ada
+                            btn_text = f"JOIN {idx}"
+                            # Jika channel berupa id angka, buat tombol dengan URL t.me/c/ID_tanpa_100 atau gunakan link khusus
+                            # Alternatif: jika user menyimpan username, atau kita buat tombol teks
+                            inline_keyboard.append([{"text": btn_text, "url": f"https://t.me/c/{str(ch).replace('-100', '')}"}])
+                        
+                        reply_markup = {"inline_keyboard": inline_keyboard}
+                        join_text = "⚠️ **Akses Ditolak!**\n\nKamu harus bergabung ke semua channel di bawah ini terlebih dahulu untuk menggunakan bot."
+                        
+                        self.send_telegram_message_with_markup(chat_id, join_text, reply_markup)
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
@@ -101,12 +112,10 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is active!")
 
     def get_unsubscribed_channels(self, user_id):
-        # Mengambil dari semua kemungkinan variabel environment di Vercel
         raw_channels = []
         for key in ["FORCE_SUB_CHANNEL", "FORCE_SUB_CHANNEL1", "FORCE_SUB_CHANNEL2", "FORCE_SUB_CHANNEL3"]:
             val = os.environ.get(key, "").strip()
             if val:
-                # Mendukung pemisahan koma juga per variabel
                 for ch in val.split(","):
                     if ch.strip():
                         raw_channels.append(ch.strip())
@@ -136,6 +145,11 @@ class handler(BaseHTTPRequestHandler):
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
+        self.call_telegram_api(url, payload)
+
+    def send_telegram_message_with_markup(self, chat_id, text, reply_markup):
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         self.call_telegram_api(url, payload)
 
     def forward_to_channel(self, from_chat_id, message_id):
