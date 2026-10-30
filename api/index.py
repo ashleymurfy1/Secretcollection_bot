@@ -107,18 +107,12 @@ class handler(BaseHTTPRequestHandler):
 
     def get_unsubscribed_channels(self, user_id):
         raw_channels = []
-        keys_to_check = [
-            "FORCE_SUB_CHANNEL_1", 
-            "FORCE_SUB_CHANNEL_2", 
-            "FORCE_SUB_CHANNEL_3", 
-            "FORCE_SUB_CHANNEL_4"
-        ]
-        for key in keys_to_check:
-            val = os.environ.get(key, "").strip()
-            if val:
-                for ch in val.split(","):
-                    if ch.strip():
-                        raw_channels.append(ch.strip())
+        # Membaca variabel FORCE_SUB_CHANNEL_1 yang dipisahkan koma
+        val = os.environ.get("FORCE_SUB_CHANNEL_1", "").strip()
+        if val:
+            for ch in val.split(","):
+                if ch.strip():
+                    raw_channels.append(ch.strip())
 
         if not raw_channels:
             return []
