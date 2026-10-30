@@ -6,8 +6,8 @@ from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-# Masukkan username channel wajib sub kamu di Vercel Environment Variables (contoh: @namachannel)
-FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '') 
+# Bisa menampung banyak channel dipisah koma, contoh: "@channel1, @channel2"
+FORCE_SUB_CHANNELS = os.environ.get('FORCE_SUB_CHANNEL', '') 
 
 ALBUM_STORAGE = {}
 
@@ -26,9 +26,11 @@ class handler(BaseHTTPRequestHandler):
                     user_id = message["from"]["id"]
                     text = message.get("text", "") or message.get("caption", "")
                     
-                    # Cek Force Subscription (Wajib Join Channel)
-                    if FORCE_SUB_CHANNEL and not self.check_user_subscribed(user_id):
-                        join_text = f"⚠️ **Mohon Bergabung Terlebih Dahulu!**\n\nKamu harus bergabung ke channel {FORCE_SUB_CHANNEL} terlebih dahulu sebelum bisa menggunakan bot ini.\n\nSilakan bergabung ke channel tersebut, lalu kirim ulang /start atau kirim file."
+                    # Cek Force Subscription untuk banyak channel
+                    unsubscribed_channels = self.get_unsubscribed_channels(user_id)
+                    if unsubscribed_channels:
+                        list_ch = "\n".join([f"• {ch}" for ch in unsubscribed_channels])
+                        join_text = f"⚠️ **Mohon Bergabung Terlebih Dahulu!**\n\nKamu harus bergabung ke channel berikut sebelum bisa menggunakan bot:\n\n{list_ch}\n\nSilakan bergabung, lalu kirim ulang /start atau kirim file."
                         self.send_telegram_message(chat_id, join_text)
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
@@ -46,7 +48,7 @@ class handler(BaseHTTPRequestHandler):
                                 self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
                                 for db_msg_id in msg_ids:
                                     self.copy_from_channel(chat_id, db_msg_id)
-                                    time.sleep(0.6) # Jeda aman anti-banned Telegram
+                                    time.sleep(0.6)
                             else:
                                 self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
                         elif len(parts) > 1 and parts[1].startswith("msg_"):
@@ -100,21 +102,31 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is active!")
 
-    def check_user_subscribed(self, user_id):
-        if not FORCE_SUB_CHANNEL:
-            return True
-        url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={FORCE_SUB_CHANNEL}&user_id={user_id}"
-        try:
-            req = urllib.request.Request(url)
-            response = urllib.request.urlopen(req)
-            result = json.loads(response.read().decode('utf-8'))
-            if result.get("ok"):
-                status = result.get("result", {}).get("status")
-                if status in ["member", "administrator", "creator"]:
-                    return True
-        except Exception as e:
-            print(f"ForceSub Check Error: {e}")
-        return False
+    def get_unsubscribed_channels(self, user_id):
+        if not FORCE_SUB_CHANNELS:
+            return []
+        
+        # Memecah daftar channel berdasarkan koma
+        channels = [ch.strip() for ch in FORCE_SUB_CHANNELS.split(",") if ch.strip()]
+        unsubscribed = []
+        
+        for channel in channels:
+            url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={channel}&user_id={user_id}"
+            try:
+                req = urllib.request.Request(url)
+                response = urllib.request.urlopen(req)
+                result = json.loads(response.read().decode('utf-8'))
+                if result.get("ok"):
+                    status = result.get("result", {}).get("status")
+                    if status not in ["member", "administrator", "creator"]:
+                        unsubscribed.append(channel)
+                else:
+                    unsubscribed.append(channel)
+            except Exception as e:
+                print(f"ForceSub Check Error for {channel}: {e}")
+                unsubscribed.append(channel)
+                
+        return unsubscribed
 
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
