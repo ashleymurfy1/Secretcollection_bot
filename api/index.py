@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
+# Masukkan username channel wajib sub kamu di Vercel Environment Variables (contoh: @namachannel)
+FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '') 
 
 ALBUM_STORAGE = {}
 
@@ -21,8 +23,19 @@ class handler(BaseHTTPRequestHandler):
                 
                 if message and "chat" in message:
                     chat_id = message["chat"]["id"]
+                    user_id = message["from"]["id"]
                     text = message.get("text", "") or message.get("caption", "")
                     
+                    # Cek Force Subscription (Wajib Join Channel)
+                    if FORCE_SUB_CHANNEL and not self.check_user_subscribed(user_id):
+                        join_text = f"⚠️ **Mohon Bergabung Terlebih Dahulu!**\n\nKamu harus bergabung ke channel {FORCE_SUB_CHANNEL} terlebih dahulu sebelum bisa menggunakan bot ini.\n\nSilakan bergabung ke channel tersebut, lalu kirim ulang /start atau kirim file."
+                        self.send_telegram_message(chat_id, join_text)
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
+                        return
+
                     if text.startswith("/start"):
                         parts = text.split(" ")
                         if len(parts) > 1 and parts[1].startswith("batch_"):
@@ -33,7 +46,7 @@ class handler(BaseHTTPRequestHandler):
                                 self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
                                 for db_msg_id in msg_ids:
                                     self.copy_from_channel(chat_id, db_msg_id)
-                                    time.sleep(0.6)
+                                    time.sleep(0.6) # Jeda aman anti-banned Telegram
                             else:
                                 self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau server telah mereset memori.")
                         elif len(parts) > 1 and parts[1].startswith("msg_"):
@@ -87,9 +100,24 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is active!")
 
+    def check_user_subscribed(self, user_id):
+        if not FORCE_SUB_CHANNEL:
+            return True
+        url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={FORCE_SUB_CHANNEL}&user_id={user_id}"
+        try:
+            req = urllib.request.Request(url)
+            response = urllib.request.urlopen(req)
+            result = json.loads(response.read().decode('utf-8'))
+            if result.get("ok"):
+                status = result.get("result", {}).get("status")
+                if status in ["member", "administrator", "creator"]:
+                    return True
+        except Exception as e:
+            print(f"ForceSub Check Error: {e}")
+        return False
+
     def send_telegram_message(self, chat_id, text):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        # Tanpa parse_mode Markdown agar karakter garis bawah (_) pada username bot aman
         payload = {"chat_id": chat_id, "text": text}
         self.call_telegram_api(url, payload)
 
