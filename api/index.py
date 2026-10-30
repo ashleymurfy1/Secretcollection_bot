@@ -1,4 +1,16 @@
-def do_POST(self):
+import os
+import json
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler
+
+TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
+
+ALBUM_STORAGE = {}
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
@@ -15,7 +27,6 @@ def do_POST(self):
                     # Cek Force Subscription
                     unsubscribed_channels = self.get_unsubscribed_channels(user_id)
                     if unsubscribed_channels:
-                        # Daftar link channel yang sesuai dengan urutan
                         channel_links = {
                             "-1002814282563": "https://t.me/secretlokal",
                             "-1003941525945": "https://t.me/BACKUPSCRT1",
@@ -25,7 +36,6 @@ def do_POST(self):
                         
                         inline_keyboard = []
                         for idx, ch in enumerate(unsubscribed_channels, 1):
-                            # Ambil link publik, atau fallback ke t.me/c/ jika tidak terdaftar
                             ch_url = channel_links.get(str(ch), f"https://t.me/c/{str(ch).replace('-100', '')}")
                             inline_keyboard.append([{"text": f"JOIN {idx}", "url": ch_url}])
                         
@@ -96,3 +106,83 @@ def do_POST(self):
         self.send_header('Content-type', 'application/json')
         self.end_headers()
         self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is active!")
+
+    def get_unsubscribed_channels(self, user_id):
+        raw_channels = []
+        val = os.environ.get("FORCE_SUB_CHANNEL_1", "").strip()
+        if val:
+            for ch in val.split(","):
+                if ch.strip():
+                    raw_channels.append(ch.strip())
+
+        if not raw_channels:
+            return []
+        
+        unsubscribed = []
+        for channel in raw_channels:
+            url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={channel}&user_id={user_id}"
+            try:
+                req = urllib.request.Request(url)
+                response = urllib.request.urlopen(req)
+                result = json.loads(response.read().decode('utf-8'))
+                if result.get("ok"):
+                    status = result.get("result", {}).get("status")
+                    if status not in ["member", "administrator", "creator"]:
+                        unsubscribed.append(channel)
+                else:
+                    unsubscribed.append(channel)
+            except Exception as e:
+                print(f"ForceSub Check Error for {channel}: {e}")
+                unsubscribed.append(channel)
+                
+        return unsubscribed
+
+    def send_telegram_message(self, chat_id, text):
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text}
+        self.call_telegram_api(url, payload)
+
+    def send_telegram_message_with_markup(self, chat_id, text, reply_markup):
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+        self.call_telegram_api(url, payload)
+
+    def forward_to_channel(self, from_chat_id, message_id):
+        url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
+        payload = {
+            "chat_id": DB_CHANNEL_ID,
+            "from_chat_id": from_chat_id,
+            "message_id": message_id
+        }
+        res = self.call_telegram_api(url, payload)
+        if res and res.get("ok"):
+            return res.get("result", {}).get("message_id")
+        return None
+
+    def copy_from_channel(self, chat_id, message_id):
+        url = f"https://api.telegram.org/bot{TOKEN}/copyMessage"
+        payload = {
+            "chat_id": chat_id,
+            "from_chat_id": DB_CHANNEL_ID,
+            "message_id": message_id
+        }
+        self.call_telegram_api(url, payload)
+
+    def call_telegram_api(self, url, payload):
+        if not TOKEN:
+            return None
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        try:
+            response = urllib.request.urlopen(req)
+            result = json.loads(response.read().decode('utf-8'))
+            return result
+        except Exception as e:
+            print(f"Telegram API Error: {e}")
+            return None
