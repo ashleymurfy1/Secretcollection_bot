@@ -7,10 +7,6 @@ from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-ADMIN_USER_ID = 7508347332
-
-# Menyimpan kumpulan ID pesan berdasarkan album/media_group_id
-ALBUM_BATCHES = {}
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -27,18 +23,9 @@ class handler(BaseHTTPRequestHandler):
                     user_id = message["from"]["id"]
                     text = message.get("text", "") or message.get("caption", "")
                     
-                    is_media = "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message
-                    
-                    if user_id != ADMIN_USER_ID and is_media:
-                        self.send_telegram_message(chat_id, "⛔ Maaf, bot ini bersifat privat. Kamu hanya bisa menggunakan link yang dibagikan oleh admin!")
-                        self.send_response(200)
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
-                        return
-
+                    # Cek Force Subscription
                     unsubscribed_channels = self.get_unsubscribed_channels(user_id)
-                    if unsubscribed_channels and user_id != ADMIN_USER_ID:
+                    if unsubscribed_channels:
                         channel_links = {
                             "-1002814282563": "https://t.me/secretlokal",
                             "-1003941525945": "https://t.me/BACKUPSCRT1",
@@ -65,15 +52,18 @@ class handler(BaseHTTPRequestHandler):
                         parts = text.split(" ")
                         if len(parts) > 1:
                             payload_data = parts[1]
+                            
+                            # Cek apakah ini format batch yang di-encode aman
                             if payload_data.startswith("b_"):
                                 try:
                                     decoded_str = base64.urlsafe_b64decode(payload_data[2:].encode()).decode()
                                     msg_ids = json.loads(decoded_str)
+                                    
                                     if msg_ids:
-                                        self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media secara berurutan...")
+                                        self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
                                         for db_msg_id in msg_ids:
                                             self.copy_from_channel(chat_id, int(db_msg_id))
-                                            time.sleep(0.5)
+                                            time.sleep(0.6)
                                     else:
                                         self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan.")
                                 except Exception as e:
@@ -87,39 +77,21 @@ class handler(BaseHTTPRequestHandler):
                             else:
                                 self.send_telegram_message(chat_id, "❌ Format link tidak valid.")
                         else:
-                            if user_id == ADMIN_USER_ID:
-                                self.send_telegram_message(chat_id, "Halo Admin! Kirimkan file atau album ke sini untuk dibuatkan link aksesnya.")
-                            else:
-                                self.send_telegram_message(chat_id, "Halo! Silakan gunakan link sah yang dibagikan dari channel untuk mengakses file.")
-                    
-                    elif user_id == ADMIN_USER_ID and is_media:
+                            self.send_telegram_message(
+                                chat_id, 
+                                "Halo! Kirimkan foto atau album ke sini untuk dibuatkan link-nya."
+                            )
+                    elif "video" in message or "document" in message or "photo" in message or "audio" in message or "animation" in message:
                         db_msg_id = None
                         if DB_CHANNEL_ID:
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
-                            media_group_id = message.get("media_group_id")
-                            bot_username = "private_media_db_bot"
-                            
-                            if media_group_id:
-                                # Jika ini album, kumpulkan ID-nya ke dalam satu grup yang sama
-                                if media_group_id not in ALBUM_BATCHES:
-                                    ALBUM_BATCHES[media_group_id] = []
-                                
-                                if db_msg_id not in ALBUM_BATCHES[media_group_id]:
-                                    ALBUM_BATCHES[media_group_id].append(db_msg_id)
-                                
-                                ids_list = ALBUM_BATCHES[media_group_id]
-                                encoded_data = base64.urlsafe_b64encode(json.dumps(ids_list).encode()).decode()
-                                telegram_link = f"https://t.me/{bot_username}?start=b_{encoded_data}"
-                                
-                                reply_text = f"✅ Album Berhasil Digabung!\n📦 Total file dalam album ini: {len(ids_list)}\n\n🔗 1 Link untuk Semua:\n{telegram_link}"
-                                self.send_telegram_message(chat_id, reply_text)
-                            else:
-                                # Jika dikirim satuan
-                                telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
-                                reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
-                                self.send_telegram_message(chat_id, reply_text)
+                            # Buat single link langsung menggunakan ID pesan dari database channel
+                            bot_username = "private_media_db_bot" # Ganti atau sesuaikan jika perlu
+                            telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
+                            reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
+                            self.send_telegram_message(chat_id, reply_text)
                     
         except Exception as e:
             print(f"Error utama: {e}")
