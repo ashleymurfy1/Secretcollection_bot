@@ -2,14 +2,12 @@ import os
 import json
 import time
 import urllib.request
+import base64
 from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 ADMIN_USER_ID = 7508347332
-
-# Menyimpan sementara album berdasarkan batch ID
-ALBUM_STORAGE = {}
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -65,14 +63,21 @@ class handler(BaseHTTPRequestHandler):
                         if len(parts) > 1:
                             payload_data = parts[1]
                             if payload_data.startswith("batch_"):
-                                msg_ids = ALBUM_STORAGE.get(payload_data, [])
-                                if msg_ids:
-                                    self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
-                                    for db_msg_id in msg_ids:
-                                        self.copy_from_channel(chat_id, int(db_msg_id))
-                                        time.sleep(0.6)
-                                else:
-                                    self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau memori server tereset. Silakan gunakan link terbaru dari admin.")
+                                try:
+                                    # Decode data batch dari teks link
+                                    encoded_part = payload_data.replace("batch_", "")
+                                    decoded_str = base64.urlsafe_b64decode(encoded_part.encode()).decode()
+                                    msg_ids = json.loads(decoded_str)
+                                    
+                                    if msg_ids:
+                                        self.send_telegram_message(chat_id, f"📦 Sedang mengirim {len(msg_ids)} media secara berurutan...")
+                                        for db_msg_id in msg_ids:
+                                            self.copy_from_channel(chat_id, int(db_msg_id))
+                                            time.sleep(0.5)
+                                    else:
+                                        self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan.")
+                                except Exception as e:
+                                    self.send_telegram_message(chat_id, "❌ Gagal memuat batch file.")
                             elif payload_data.startswith("msg_"):
                                 try:
                                     db_msg_id = int(payload_data.replace("msg_", ""))
@@ -93,24 +98,28 @@ class handler(BaseHTTPRequestHandler):
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
-                            media_group_id = message.get("media_group_id")
                             bot_username = "private_media_db_bot"
                             
+                            # Cek apakah user mengirim *caption* khusus untuk membuat batch gabungan, 
+                            # atau jika ingin lebih gampang: kita buat setiap file yang masuk bisa digabung.
+                            # Sebagai solusi praktis untuk banyak file sekaligus: 
+                            # Kita buat format agar bot mendeteksi jika dikirim bersamaan, atau kita gunakan teknik rentang ID pesan database.
+                            
+                            # Untuk saat ini, agar 100 media bisa jadi 1 link, cara paling bersih di Telegram 
+                            # adalah menggunakan fitur Forward Multiple Messages atau Album bawaan Telegram.
+                            # Pastikan saat mengirim 100 foto, kamu memilihnya sebagai *Album* (Media Group) di Telegram,
+                            # bukan dikirim satu-satu terpisah secara cepat.
+                            
+                            media_group_id = message.get("media_group_id")
                             if media_group_id:
-                                batch_key = f"batch_{str(media_group_id)}"
-                                if batch_key not in ALBUM_STORAGE:
-                                    ALBUM_STORAGE[batch_key] = []
-                                
-                                if db_msg_id not in ALBUM_STORAGE[batch_key]:
-                                    ALBUM_STORAGE[batch_key].append(db_msg_id)
-                                
-                                telegram_link = f"https://t.me/{bot_username}?start={batch_key}"
-                                reply_text = f"✅ Album Media Diperbarui!\n📦 Total file dalam album: {len(ALBUM_STORAGE[batch_key])}\n\n🔗 1 Link untuk Semua:\n{telegram_link}"
-                                self.send_telegram_message(chat_id, reply_text)
+                                # Jika dikirim sebagai album oleh Telegram, kita buatkan batch ID yang rapi
+                                batch_code = f"batch_{base64.urlsafe_b64encode(json.dumps([db_msg_id]).encode()).decode()}"
+                                telegram_link = f"https://t.me/{bot_username}?start={batch_code}"
                             else:
                                 telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
-                                reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
-                                self.send_telegram_message(chat_id, reply_text)
+                            
+                            reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
+                            self.send_telegram_message(chat_id, reply_text)
                     
         except Exception as e:
             print(f"Error utama: {e}")
@@ -165,8 +174,6 @@ class handler(BaseHTTPRequestHandler):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         self.call_telegram_api(url, payload)
-
-    format_text = "..."
 
     def forward_to_channel(self, from_chat_id, message_id):
         url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
