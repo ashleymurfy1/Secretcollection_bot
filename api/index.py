@@ -9,6 +9,9 @@ TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 ADMIN_USER_ID = 7508347332
 
+# Menyimpan kumpulan ID pesan berdasarkan album/media_group_id
+ALBUM_BATCHES = {}
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -62,22 +65,19 @@ class handler(BaseHTTPRequestHandler):
                         parts = text.split(" ")
                         if len(parts) > 1:
                             payload_data = parts[1]
-                            if payload_data.startswith("batch_"):
+                            if payload_data.startswith("b_"):
                                 try:
-                                    # Decode data batch dari teks link
-                                    encoded_part = payload_data.replace("batch_", "")
-                                    decoded_str = base64.urlsafe_b64decode(encoded_part.encode()).decode()
+                                    decoded_str = base64.urlsafe_b64decode(payload_data[2:].encode()).decode()
                                     msg_ids = json.loads(decoded_str)
-                                    
                                     if msg_ids:
-                                        self.send_telegram_message(chat_id, f"📦 Sedang mengirim {len(msg_ids)} media secara berurutan...")
+                                        self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media secara berurutan...")
                                         for db_msg_id in msg_ids:
                                             self.copy_from_channel(chat_id, int(db_msg_id))
                                             time.sleep(0.5)
                                     else:
                                         self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan.")
                                 except Exception as e:
-                                    self.send_telegram_message(chat_id, "❌ Gagal memuat batch file.")
+                                    self.send_telegram_message(chat_id, "❌ Gagal memuat data batch file.")
                             elif payload_data.startswith("msg_"):
                                 try:
                                     db_msg_id = int(payload_data.replace("msg_", ""))
@@ -98,28 +98,28 @@ class handler(BaseHTTPRequestHandler):
                             db_msg_id = self.forward_to_channel(chat_id, message.get("message_id"))
 
                         if db_msg_id:
+                            media_group_id = message.get("media_group_id")
                             bot_username = "private_media_db_bot"
                             
-                            # Cek apakah user mengirim *caption* khusus untuk membuat batch gabungan, 
-                            # atau jika ingin lebih gampang: kita buat setiap file yang masuk bisa digabung.
-                            # Sebagai solusi praktis untuk banyak file sekaligus: 
-                            # Kita buat format agar bot mendeteksi jika dikirim bersamaan, atau kita gunakan teknik rentang ID pesan database.
-                            
-                            # Untuk saat ini, agar 100 media bisa jadi 1 link, cara paling bersih di Telegram 
-                            # adalah menggunakan fitur Forward Multiple Messages atau Album bawaan Telegram.
-                            # Pastikan saat mengirim 100 foto, kamu memilihnya sebagai *Album* (Media Group) di Telegram,
-                            # bukan dikirim satu-satu terpisah secara cepat.
-                            
-                            media_group_id = message.get("media_group_id")
                             if media_group_id:
-                                # Jika dikirim sebagai album oleh Telegram, kita buatkan batch ID yang rapi
-                                batch_code = f"batch_{base64.urlsafe_b64encode(json.dumps([db_msg_id]).encode()).decode()}"
-                                telegram_link = f"https://t.me/{bot_username}?start={batch_code}"
+                                # Jika ini album, kumpulkan ID-nya ke dalam satu grup yang sama
+                                if media_group_id not in ALBUM_BATCHES:
+                                    ALBUM_BATCHES[media_group_id] = []
+                                
+                                if db_msg_id not in ALBUM_BATCHES[media_group_id]:
+                                    ALBUM_BATCHES[media_group_id].append(db_msg_id)
+                                
+                                ids_list = ALBUM_BATCHES[media_group_id]
+                                encoded_data = base64.urlsafe_b64encode(json.dumps(ids_list).encode()).decode()
+                                telegram_link = f"https://t.me/{bot_username}?start=b_{encoded_data}"
+                                
+                                reply_text = f"✅ Album Berhasil Digabung!\n📦 Total file dalam album ini: {len(ids_list)}\n\n🔗 1 Link untuk Semua:\n{telegram_link}"
+                                self.send_telegram_message(chat_id, reply_text)
                             else:
+                                # Jika dikirim satuan
                                 telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
-                            
-                            reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
-                            self.send_telegram_message(chat_id, reply_text)
+                                reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
+                                self.send_telegram_message(chat_id, reply_text)
                     
         except Exception as e:
             print(f"Error utama: {e}")
