@@ -8,10 +8,12 @@ from pymongo import MongoClient
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 MONGO_URI = os.environ.get('MONGO_URI', '')
-BOT_USERNAME = "mysecretfile"
 
-# Inisialisasi MongoDB Atlas
-client = MongoClient(MONGO_URI)
+# Diperbarui dengan username bot yang aktif (private_media_db_bot)
+BOT_USERNAME = "private_media_db_bot"
+
+# Diperbarui dengan parameter tlsAllowInvalidCertificates agar koneksi MongoDB aman di Vercel
+client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True)
 db = client["telegram_bot_db"]
 albums_collection = db["albums"]
 
