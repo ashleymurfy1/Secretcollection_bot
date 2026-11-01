@@ -2,15 +2,14 @@ import os
 import json
 import time
 import urllib.request
-import base64
 from http.server import BaseHTTPRequestHandler
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 ADMIN_USER_ID = 7508347332
 
-# Menyimpan sementara album yang sedang dikirim detik ini
-TEMP_ALBUMS = {}
+# Menyimpan sementara album berdasarkan batch ID
+ALBUM_STORAGE = {}
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -65,19 +64,15 @@ class handler(BaseHTTPRequestHandler):
                         parts = text.split(" ")
                         if len(parts) > 1:
                             payload_data = parts[1]
-                            if payload_data.startswith("b_"):
-                                try:
-                                    decoded_str = base64.urlsafe_b64decode(payload_data[2:].encode()).decode()
-                                    msg_ids = json.loads(decoded_str)
-                                    if msg_ids:
-                                        self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
-                                        for db_msg_id in msg_ids:
-                                            self.copy_from_channel(chat_id, int(db_msg_id))
-                                            time.sleep(0.6)
-                                    else:
-                                        self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan.")
-                                except Exception as e:
-                                    self.send_telegram_message(chat_id, "❌ Gagal memuat data batch file.")
+                            if payload_data.startswith("batch_"):
+                                msg_ids = ALBUM_STORAGE.get(payload_data, [])
+                                if msg_ids:
+                                    self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
+                                    for db_msg_id in msg_ids:
+                                        self.copy_from_channel(chat_id, int(db_msg_id))
+                                        time.sleep(0.6)
+                                else:
+                                    self.send_telegram_message(chat_id, "❌ Kumpulan file tidak ditemukan atau memori server tereset. Silakan gunakan link terbaru dari admin.")
                             elif payload_data.startswith("msg_"):
                                 try:
                                     db_msg_id = int(payload_data.replace("msg_", ""))
@@ -102,19 +97,17 @@ class handler(BaseHTTPRequestHandler):
                             bot_username = "private_media_db_bot"
                             
                             if media_group_id:
-                                # Jika ini bagian dari album, kumpulkan ID-nya
-                                if media_group_id not in TEMP_ALBUMS:
-                                    TEMP_ALBUMS[media_group_id] = []
-                                TEMP_ALBUMS[media_group_id].append(db_msg_id)
+                                batch_key = f"batch_{str(media_group_id)}"
+                                if batch_key not in ALBUM_STORAGE:
+                                    ALBUM_STORAGE[batch_key] = []
                                 
-                                # Buat link enkripsi berisi kumpulan ID album tersebut
-                                encoded_data = base64.urlsafe_b64encode(json.dumps(TEMP_ALBUMS[media_group_id]).encode()).decode()
-                                telegram_link = f"https://t.me/{bot_username}?start=b_{encoded_data}"
+                                if db_msg_id not in ALBUM_STORAGE[batch_key]:
+                                    ALBUM_STORAGE[batch_key].append(db_msg_id)
                                 
-                                reply_text = f"✅ Album Media Diperbarui!\n📦 Total file dalam album: {len(TEMP_ALBUMS[media_group_id])}\n\n🔗 1 Link untuk Semua:\n{telegram_link}"
+                                telegram_link = f"https://t.me/{bot_username}?start={batch_key}"
+                                reply_text = f"✅ Album Media Diperbarui!\n📦 Total file dalam album: {len(ALBUM_STORAGE[batch_key])}\n\n🔗 1 Link untuk Semua:\n{telegram_link}"
                                 self.send_telegram_message(chat_id, reply_text)
                             else:
-                                # Jika dikirim satuan (bukan album)
                                 telegram_link = f"https://t.me/{bot_username}?start=msg_{db_msg_id}"
                                 reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
                                 self.send_telegram_message(chat_id, reply_text)
@@ -172,6 +165,8 @@ class handler(BaseHTTPRequestHandler):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         self.call_telegram_api(url, payload)
+
+    format_text = "..."
 
     def forward_to_channel(self, from_chat_id, message_id):
         url = f"https://api.telegram.org/bot{TOKEN}/forwardMessage"
