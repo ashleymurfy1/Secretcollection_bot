@@ -3,12 +3,17 @@ import json
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler
+from pymongo import MongoClient
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
-
-# Ubah ini sesuai username bot Telegram kamu
+MONGO_URI = os.environ.get('MONGO_URI', '')
 BOT_USERNAME = "mysecretfile"
+
+# Inisialisasi MongoDB Atlas
+client = MongoClient(MONGO_URI)
+db = client["telegram_bot_db"]
+albums_collection = db["albums"]
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -53,11 +58,9 @@ class handler(BaseHTTPRequestHandler):
                     if text.startswith("/start"):
                         parts = text.split(" ")
                         if len(parts) > 1 and parts[1].startswith("batch_"):
-                            try:
-                                encoded_str = parts[1].replace("batch_", "")
-                                msg_ids = [int(x) for x in encoded_str.split("_") if x.isdigit()]
-                            except:
-                                msg_ids = []
+                            batch_key = parts[1]
+                            album_data = albums_collection.find_one({"batch_key": batch_key})
+                            msg_ids = album_data.get("msg_ids", []) if album_data else []
                             
                             if msg_ids:
                                 self.send_telegram_message(chat_id, f"📦 Mengirim {len(msg_ids)} media satu persatu dengan aman...")
@@ -85,8 +88,17 @@ class handler(BaseHTTPRequestHandler):
                         if db_msg_id:
                             media_group_id = message.get("media_group_id")
                             if media_group_id:
-                                telegram_link = f"https://t.me/{BOT_USERNAME}?start=batch_{db_msg_id}"
-                                reply_text = "✅ Media Album Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
+                                batch_key = f"batch_{str(media_group_id)}"
+                                
+                                # Simpan dan gabungkan ke MongoDB Atlas secara permanen
+                                albums_collection.update_one(
+                                    {"batch_key": batch_key},
+                                    {"$addToSet": {"msg_ids": db_msg_id}},
+                                    upsert=True
+                                )
+                                
+                                telegram_link = f"https://t.me/{BOT_USERNAME}?start={batch_key}"
+                                reply_text = "✅ Media Album Berhasil Disimpan Permanen!\n\n🔗 Link Akses:\n" + telegram_link
                                 self.send_telegram_message(chat_id, reply_text)
                             else:
                                 telegram_link = f"https://t.me/{BOT_USERNAME}?start=msg_" + str(db_msg_id)
