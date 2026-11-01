@@ -7,6 +7,9 @@ from http.server import BaseHTTPRequestHandler
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 DB_CHANNEL_ID = os.environ.get('DB_CHANNEL_ID', '')
 
+# Ubah ini sesuai username bot Telegram kamu
+BOT_USERNAME = "mysecretfile"
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -50,7 +53,6 @@ class handler(BaseHTTPRequestHandler):
                     if text.startswith("/start"):
                         parts = text.split(" ")
                         if len(parts) > 1 and parts[1].startswith("batch_"):
-                            # Perbaikan: Mendapatkan ID pesan database langsung dari parameter teks link (aman dari server reset)
                             try:
                                 encoded_str = parts[1].replace("batch_", "")
                                 msg_ids = [int(x) for x in encoded_str.split("_") if x.isdigit()]
@@ -83,12 +85,11 @@ class handler(BaseHTTPRequestHandler):
                         if db_msg_id:
                             media_group_id = message.get("media_group_id")
                             if media_group_id:
-                                # Menggunakan trik enkripsi ID pesan ke dalam link agar aman permanen
-                                telegram_link = f"https://t.me/private_media_db_bot?start=batch_{db_msg_id}"
+                                telegram_link = f"https://t.me/{BOT_USERNAME}?start=batch_{db_msg_id}"
                                 reply_text = "✅ Media Album Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
                                 self.send_telegram_message(chat_id, reply_text)
                             else:
-                                telegram_link = "https://t.me/private_media_db_bot?start=msg_" + str(db_msg_id)
+                                telegram_link = f"https://t.me/{BOT_USERNAME}?start=msg_" + str(db_msg_id)
                                 reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
                                 self.send_telegram_message(chat_id, reply_text)
                         else:
