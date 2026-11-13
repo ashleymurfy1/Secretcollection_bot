@@ -92,6 +92,9 @@ class handler(BaseHTTPRequestHandler):
                             if media_group_id:
                                 batch_key = f"batch_{str(media_group_id)}"
                                 
+                                # Cek data album di database terlebih dahulu untuk mencegah spam balasan
+                                existing_album = albums_collection.find_one({"batch_key": batch_key})
+                                
                                 # Simpan dan gabungkan ke MongoDB Atlas secara permanen
                                 albums_collection.update_one(
                                     {"batch_key": batch_key},
@@ -99,9 +102,17 @@ class handler(BaseHTTPRequestHandler):
                                     upsert=True
                                 )
                                 
-                                telegram_link = f"https://t.me/{BOT_USERNAME}?start={batch_key}"
-                                reply_text = "✅ Media Album Berhasil Disimpan Permanen!\n\n🔗 Link Akses:\n" + telegram_link
-                                self.send_telegram_message(chat_id, reply_text)
+                                # Kirim balasan HANYA JIKA ini adalah pesan pertama dari album tersebut
+                                if not existing_album or not existing_album.get("notif_sent"):
+                                    # Tandai bahwa notifikasi untuk batch ini sudah dikirim
+                                    albums_collection.update_one(
+                                        {"batch_key": batch_key},
+                                        {"$set": {"notif_sent": True}}
+                                    )
+                                    
+                                    telegram_link = f"https://t.me/{BOT_USERNAME}?start={batch_key}"
+                                    reply_text = "✅ Media Album Berhasil Disimpan Permanen!\n\n🔗 Link Akses:\n" + telegram_link
+                                    self.send_telegram_message(chat_id, reply_text)
                             else:
                                 telegram_link = f"https://t.me/{BOT_USERNAME}?start=msg_" + str(db_msg_id)
                                 reply_text = "✅ Media Berhasil Disimpan!\n\n🔗 Link Akses:\n" + telegram_link
@@ -188,9 +199,9 @@ class handler(BaseHTTPRequestHandler):
         if not TOKEN:
             return None
         data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        x_req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         try:
-            response = urllib.request.urlopen(req)
+            response = urllib.request.urlopen(x_req)
             result = json.loads(response.read().decode('utf-8'))
             return result
         except Exception as e:
